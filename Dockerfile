@@ -30,7 +30,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json tsconfig.json ./
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/src ./src
-RUN mkdir -p /app/storage/pdfs && chown -R nextjs:nodejs /app/storage
+RUN ./node_modules/.bin/prisma generate \
+  && mkdir -p /app/storage/pdfs \
+  && chown -R nextjs:nodejs /app/storage /app/node_modules/.prisma /app/node_modules/@prisma/client
 USER nextjs
 EXPOSE 3000
 HEALTHCHECK CMD node -e "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
