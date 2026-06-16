@@ -16,7 +16,7 @@ services:
       retries: 10
 
   app:
-    build: .
+    image: ${PAPERVARD_IMAGE:-ghcr.io/mschoettli/papervard:latest}
     depends_on:
       db:
         condition: service_healthy

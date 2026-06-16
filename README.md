@@ -28,10 +28,11 @@ Seeded admin:
 
 ## Docker
 
-Run the production stack. The app container applies Prisma migrations on startup:
+Run the production stack from the published GHCR image. The app container applies Prisma migrations on startup:
 
 ```bash
-docker compose up --build
+docker compose pull
+docker compose up -d
 ```
 
 Then seed the first admin inside the app container before first use:
@@ -39,6 +40,8 @@ Then seed the first admin inside the app container before first use:
 ```bash
 docker compose run --rm app npm run db:seed
 ```
+
+By default Compose uses `ghcr.io/mschoettli/papervard:latest`. Override it with `PAPERVARD_IMAGE` if you publish a different tag.
 
 ## Notes
 
