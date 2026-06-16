@@ -1,0 +1,37 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: papervard
+      POSTGRES_USER: papervard
+      POSTGRES_PASSWORD: papervard
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U papervard -d papervard"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://papervard:papervard@db:5432/papervard?schema=public
+      AUTH_SECRET: change-me-to-a-long-random-secret
+      PDF_STORAGE_PATH: /app/storage/pdfs
+      EMBEDDING_MODEL_PATH: /app/models/multilingual-local
+      OCR_LANGUAGES: deu+eng+fra+ita+spa
+    ports:
+      - "3000:3000"
+    volumes:
+      - pdf_storage:/app/storage/pdfs
+    command: sh -c "npx prisma migrate deploy && node server.js"
+
+volumes:
+  postgres_data:
+  pdf_storage:
