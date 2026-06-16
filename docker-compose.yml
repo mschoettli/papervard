@@ -26,11 +26,13 @@ services:
       PDF_STORAGE_PATH: /app/storage/pdfs
       EMBEDDING_MODEL_PATH: /app/models/multilingual-local
       OCR_LANGUAGES: deu+eng+fra+ita+spa
+      SEED_ADMIN_EMAIL: admin@papervard.local
+      SEED_ADMIN_PASSWORD: Papervard-Admin-123!
     ports:
       - "3000:3000"
     volumes:
       - pdf_storage:/app/storage/pdfs
-    command: sh -c "./node_modules/.bin/prisma migrate deploy && node server.js"
+    command: sh -c "./node_modules/.bin/prisma migrate deploy && npm run db:seed && node server.js"
 
 volumes:
   postgres_data:
