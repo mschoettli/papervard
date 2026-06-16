@@ -30,7 +30,7 @@ services:
       - "3000:3000"
     volumes:
       - pdf_storage:/app/storage/pdfs
-    command: sh -c "npx prisma migrate deploy && node server.js"
+    command: sh -c "./node_modules/.bin/prisma migrate deploy && node server.js"
 
 volumes:
   postgres_data:
