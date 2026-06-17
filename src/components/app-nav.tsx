@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import type React from "react";
 import { Archive, FileSearch, LogOut, Upload, Users } from "lucide-react";
 import { logoutAction } from "@/server/actions/auth";
@@ -7,7 +8,16 @@ export function AppNav({ role }: { role: "admin" | "user" }) {
   return (
     <aside className="border-b border-border bg-white lg:min-h-screen lg:w-64 lg:border-b-0 lg:border-r">
       <div className="flex h-16 items-center border-b border-border px-5">
-        <Link href="/documents" className="text-lg font-semibold tracking-normal">
+        <Link href="/documents" className="flex items-center gap-3 text-lg font-semibold tracking-normal">
+          <Image
+            src="/papervard-icon.png"
+            alt=""
+            width={36}
+            height={36}
+            className="h-9 w-9 rounded-lg shadow-sm"
+            aria-hidden="true"
+            priority
+          />
           Papervard
         </Link>
       </div>

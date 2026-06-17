@@ -1,7 +1,7 @@
 "use client";
 
+import Image from "next/image";
 import { useActionState } from "react";
-import { FileLock } from "lucide-react";
 import { Button } from "@/components/button";
 import { loginAction } from "@/server/actions/auth";
 
@@ -12,9 +12,15 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-background p-6">
       <form action={action} className="w-full max-w-sm rounded-lg border border-border bg-white p-6 shadow-sm">
         <div className="mb-6 flex items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <FileLock size={22} />
-          </div>
+          <Image
+            src="/papervard-icon.png"
+            alt=""
+            width={44}
+            height={44}
+            className="size-11 rounded-lg shadow-sm"
+            aria-hidden="true"
+            priority
+          />
           <div>
             <h1 className="text-xl font-semibold">Papervard</h1>
             <p className="text-sm text-muted-foreground">PDF-Bibliothek anmelden</p>
