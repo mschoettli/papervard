@@ -51,15 +51,6 @@ export default async function SystemPage() {
           <UpdateProgressForm canTriggerUpdate={status.canTriggerUpdate} />
         </div>
       </section>
-
-      <section className="rounded-lg border border-border bg-white p-5">
-        <h2 className="text-base font-semibold">Update-Ablauf</h2>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Der Button ruft Watchtower im Docker-Netzwerk auf. Watchtower zieht das neue
-          <span className="font-mono"> ghcr.io/mschoettli/papervard:latest </span>
-          Image und startet den App-Container neu.
-        </p>
-      </section>
     </div>
   );
 }
