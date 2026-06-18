@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/server/auth";
-import { getUpdateStatus } from "@/server/update";
+import { currentRuntime, getUpdateStatus } from "@/server/update";
 
 export async function GET() {
   await requireAdmin();
   const status = await getUpdateStatus();
+  const runtime = currentRuntime();
 
   return NextResponse.json({
+    bootId: runtime.bootId,
+    startedAt: runtime.startedAt,
     currentSha: status.currentSha,
     latestSha: status.latestSha,
     updateAvailable: status.updateAvailable,

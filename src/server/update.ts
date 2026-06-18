@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 
 export type UpdateStatus = {
   currentSha: string | null;
@@ -10,6 +11,8 @@ export type UpdateStatus = {
   error: string | null;
 };
 
+const serverStartedAt = new Date();
+const serverBootId = randomUUID();
 const repository = process.env.GITHUB_REPOSITORY ?? "mschoettli/papervard";
 const branch = process.env.GITHUB_BRANCH ?? "main";
 const updateTimeoutMs = 10 * 60 * 1000;
@@ -23,6 +26,13 @@ type LatestCommit = {
 export function currentVersion() {
   const sha = process.env.APP_GIT_SHA;
   return sha && sha !== "unknown" ? sha : null;
+}
+
+export function currentRuntime() {
+  return {
+    bootId: serverBootId,
+    startedAt: serverStartedAt.toISOString()
+  };
 }
 
 function updateStatus(currentSha: string | null, latest: LatestCommit, error: string | null): UpdateStatus {

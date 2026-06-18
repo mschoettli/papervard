@@ -15,6 +15,8 @@ type UpdateActionState = {
 };
 
 type UpdateStatusResponse = {
+  bootId: string;
+  startedAt: string;
   currentSha: string | null;
   latestSha: string | null;
   updateAvailable: boolean;
@@ -55,6 +57,7 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
   const [elapsedMs, setElapsedMs] = useState(0);
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [verified, setVerified] = useState(false);
+  const [startedFromBootId, setStartedFromBootId] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [reloading, setReloading] = useState(false);
   const [reloadError, setReloadError] = useState<string | null>(null);
@@ -69,6 +72,7 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
 
     setElapsedMs(0);
     setVerified(false);
+    setStartedFromBootId(null);
     setStatusError(null);
     setReloadError(null);
     const startedAt = Date.now();
@@ -79,6 +83,22 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
     return () => window.clearInterval(timer);
   }, [pending]);
 
+  async function fetchUpdateStatus() {
+    const response = await fetch("/api/update/status", {
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: {
+        "Cache-Control": "no-cache"
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Status konnte nicht geladen werden (${response.status}).`);
+    }
+
+    return (await response.json()) as UpdateStatusResponse;
+  }
+
   async function startUpdate() {
     if (!canTriggerUpdate || pending || checkingStatus || succeeded) return;
 
@@ -86,10 +106,14 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
     setState({});
     setElapsedMs(0);
     setVerified(false);
+    setStartedFromBootId(null);
     setStatusError(null);
     setReloadError(null);
 
     try {
+      const beforeStatus = await fetchUpdateStatus().catch(() => null);
+      setStartedFromBootId(beforeStatus?.bootId ?? null);
+
       const response = await fetch("/api/update/start", {
         method: "POST",
         cache: "no-store",
@@ -109,8 +133,11 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
       });
     } catch (error) {
       setState({
-        ok: false,
-        message: error instanceof Error ? `Update konnte nicht gestartet werden: ${error.message}` : "Update konnte nicht gestartet werden."
+        ok: true,
+        message:
+          error instanceof Error
+            ? `Verbindung waehrend des Update-Starts unterbrochen: ${error.message}. Die App prueft jetzt, ob der Neustart laeuft.`
+            : "Verbindung waehrend des Update-Starts unterbrochen. Die App prueft jetzt, ob der Neustart laeuft."
       });
     } finally {
       setPending(false);
@@ -129,27 +156,18 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
         if (cancelled) return;
 
         try {
-          const response = await fetch("/api/update/status", {
-            cache: "no-store",
-            credentials: "same-origin",
-            headers: {
-              "Cache-Control": "no-cache"
-            }
-          });
+          const status = await fetchUpdateStatus();
+          const bootChanged = Boolean(startedFromBootId && status.bootId && status.bootId !== startedFromBootId);
 
-          if (response.ok) {
-            const status = (await response.json()) as UpdateStatusResponse;
+          if (status.verifiedCurrent || bootChanged) {
+            setVerified(true);
+            setCheckingStatus(false);
+            setStatusError(null);
+            return;
+          }
 
-            if (status.verifiedCurrent) {
-              setVerified(true);
-              setCheckingStatus(false);
-              setStatusError(null);
-              return;
-            }
-
-            if (status.error && !status.currentSha) {
-              setStatusError(status.error);
-            }
+          if (status.error && !status.currentSha) {
+            setStatusError(status.error);
           }
         } catch {
           // During the container restart the app can be unreachable for a moment.
@@ -169,7 +187,7 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
     return () => {
       cancelled = true;
     };
-  }, [updateStarted, verified]);
+  }, [startedFromBootId, updateStarted, verified]);
 
   const progressState = useMemo(() => {
     if (succeeded) {
