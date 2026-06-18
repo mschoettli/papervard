@@ -6,6 +6,7 @@ import path from "node:path";
 import { prisma } from "@/lib/prisma";
 import { chunkPages } from "@/server/pdf/chunk";
 import { extractPdfText } from "@/server/pdf/extract";
+import { createDocumentThumbnail } from "@/server/pdf/thumbnail";
 import { detectYear } from "@/server/pdf/year";
 import { embedText, vectorLiteral } from "@/server/search/embeddings";
 
@@ -46,6 +47,12 @@ export async function saveUploadedPdf(file: File, uploaderId?: string, yearOverr
       indexStatus: "queued"
     }
   });
+
+  try {
+    await createDocumentThumbnail(document.id, document.storagePath);
+  } catch {
+    // Thumbnail generation is best-effort; text indexing remains the source of truth for upload success.
+  }
 
   await indexDocument(document.id);
   return document;

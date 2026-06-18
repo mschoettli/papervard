@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Download, Eye, FileText, Heart, Search, SlidersHorizontal } from "lucide-react";
+import { Download, Eye, Heart, Search, SlidersHorizontal } from "lucide-react";
+import { DocumentThumbnail } from "@/components/document-thumbnail";
 import { StatusPill } from "@/components/status-pill";
 import { formatBytes, statusLabel } from "@/lib/utils";
 import { requireUser } from "@/server/auth";
@@ -97,16 +98,15 @@ export default async function DocumentsPage({
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {documents.map((document) => (
-            <article key={document.id} className="group flex min-h-[210px] flex-col rounded-lg border border-border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-md">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-start gap-3">
-                  <div className="flex size-11 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                    <FileText size={22} />
-                  </div>
-                  <div className="min-w-0">
-                    <h2 className="line-clamp-2 break-words text-sm font-semibold leading-5">{document.title}</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">{document.year} · {formatBytes(document.size)}</p>
-                  </div>
+            <article key={document.id} className="group flex min-h-[420px] flex-col rounded-lg border border-border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-md">
+              <Link href={`/documents/${document.id}`} className="block focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+                <DocumentThumbnail documentId={document.id} title={document.title} />
+              </Link>
+
+              <div className="mt-4 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="line-clamp-2 break-words text-sm font-semibold leading-5">{document.title}</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">{document.year} · {formatBytes(document.size)}</p>
                 </div>
                 {document.favorites.length > 0 ? <Heart size={18} className="shrink-0 fill-red-500 text-red-500" /> : null}
               </div>
