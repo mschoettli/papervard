@@ -1,27 +1,36 @@
 import Link from "next/link";
 import type React from "react";
-import { AlertTriangle, Archive, CheckCircle2, Clock3, FileSearch, Heart, Upload } from "lucide-react";
+import { Archive, Download, Eye, FileSearch, Heart, Upload } from "lucide-react";
 import { AppNav } from "@/components/app-nav";
-import { StatusPill } from "@/components/status-pill";
-import { formatBytes, statusLabel } from "@/lib/utils";
+import { DocumentThumbnail } from "@/components/document-thumbnail";
+import { formatBytes } from "@/lib/utils";
+import { toggleFavoriteDocumentAction } from "@/server/actions/documents";
 import { requireUser } from "@/server/auth";
 import { prisma } from "@/lib/prisma";
 
 export default async function HomePage() {
   const user = await requireUser();
-  const [totalDocuments, totalSize, statusCounts, recentDocuments, favoriteCount, failedDocuments] = await Promise.all([
+  const [totalDocuments, totalSize, recentDocuments, favoriteRecords, favoriteCount] = await Promise.all([
     prisma.document.count(),
     prisma.document.aggregate({ _sum: { size: true } }),
-    prisma.document.groupBy({ by: ["indexStatus"], _count: { _all: true } }),
-    prisma.document.findMany({ orderBy: { createdAt: "desc" }, take: 6 }),
-    prisma.favoriteDocument.count({ where: { userId: user.id } }),
-    prisma.document.findMany({ where: { indexStatus: "failed" }, orderBy: { updatedAt: "desc" }, take: 4 })
+    prisma.document.findMany({
+      include: { favorites: { where: { userId: user.id }, select: { id: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 4
+    }),
+    prisma.favoriteDocument.findMany({
+      where: { userId: user.id },
+      include: {
+        document: {
+          include: { favorites: { where: { userId: user.id }, select: { id: true } } }
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 4
+    }),
+    prisma.favoriteDocument.count({ where: { userId: user.id } })
   ]);
-
-  const indexed = statusCounts.find((item) => item.indexStatus === "indexed")?._count._all ?? 0;
-  const queued = statusCounts.find((item) => item.indexStatus === "queued")?._count._all ?? 0;
-  const processing = statusCounts.find((item) => item.indexStatus === "processing")?._count._all ?? 0;
-  const failed = statusCounts.find((item) => item.indexStatus === "failed")?._count._all ?? 0;
+  const favoriteDocuments = favoriteRecords.map((favorite) => favorite.document);
 
   return (
     <div className="min-h-screen lg:flex">
@@ -32,7 +41,7 @@ export default async function HomePage() {
             <div>
               <p className="text-sm font-medium text-primary">Guten Tag, {user.name}</p>
               <h1 className="mt-1 text-3xl font-semibold tracking-normal">Dashboard</h1>
-              <p className="mt-2 text-sm text-muted-foreground">Überblick über Bibliothek, Indexierung und letzte Aktivitäten.</p>
+              <p className="mt-2 text-sm text-muted-foreground">Überblick über Bibliothek, Favoriten und letzte Aktivitäten.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Link href="/search" className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">
@@ -48,75 +57,97 @@ export default async function HomePage() {
             </div>
           </header>
 
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <MetricCard icon={<Archive size={20} />} label="Dokumente" value={String(totalDocuments)} detail={formatBytes(totalSize._sum.size ?? 0)} />
-            <MetricCard icon={<CheckCircle2 size={20} />} label="Bereit" value={String(indexed)} detail="voll indexiert" />
-            <MetricCard icon={<Clock3 size={20} />} label="In Arbeit" value={String(queued + processing)} detail={`${queued} wartet, ${processing} läuft`} />
             <MetricCard icon={<Heart size={20} />} label="Favoriten" value={String(favoriteCount)} detail="für dein Konto" />
+            <MetricCard icon={<Upload size={20} />} label="Letzte Uploads" value={String(recentDocuments.length)} detail="neueste PDFs" />
           </section>
 
-          {failed > 0 ? (
-            <section className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-800">
-              <div className="flex items-center gap-2 font-semibold">
-                <AlertTriangle size={18} />
-                {failed} Dokument{failed === 1 ? "" : "e"} mit Indexierungsfehler
-              </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {failedDocuments.map((document) => (
-                  <Link key={document.id} href={`/documents/${document.id}`} className="rounded-md bg-white/70 p-3 text-sm hover:bg-white">
-                    <span className="font-medium">{document.title}</span>
-                    <span className="mt-1 block truncate text-xs">{document.indexError}</span>
-                  </Link>
-                ))}
-              </div>
-            </section>
-          ) : null}
+          <DocumentSection title="Favoriten" emptyText="Noch keine Favoriten gemerkt." documents={favoriteDocuments} />
 
-          <section className="grid gap-5 xl:grid-cols-[1.35fr_0.65fr]">
-            <div className="rounded-lg border border-border bg-white">
-              <div className="flex items-center justify-between border-b border-border p-4">
-                <h2 className="font-semibold">Letzte Uploads</h2>
-                <Link href="/documents" className="text-sm font-medium text-primary hover:underline">Alle ansehen</Link>
-              </div>
-              <div className="divide-y divide-border">
-                {recentDocuments.length === 0 ? (
-                  <p className="p-6 text-sm text-muted-foreground">Noch keine PDFs vorhanden.</p>
-                ) : recentDocuments.map((document) => (
-                  <Link key={document.id} href={`/documents/${document.id}`} className="grid gap-2 p-4 hover:bg-muted/60 sm:grid-cols-[1fr_auto] sm:items-center">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{document.title}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{document.year} · {formatBytes(document.size)} · {document.pageCount || "?"} Seiten</p>
-                    </div>
-                    <StatusPill status={document.indexStatus} />
-                  </Link>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-border bg-white p-5">
-              <h2 className="font-semibold">Indexierungsstatus</h2>
-              <div className="mt-4 space-y-3">
-                {["indexed", "processing", "queued", "failed"].map((status) => {
-                  const count = statusCounts.find((item) => item.indexStatus === status)?._count._all ?? 0;
-                  const width = totalDocuments ? Math.max(5, Math.round((count / totalDocuments) * 100)) : 0;
-                  return (
-                    <div key={status}>
-                      <div className="mb-1 flex justify-between text-sm">
-                        <span>{statusLabel(status)}</span>
-                        <span className="text-muted-foreground">{count}</span>
-                      </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-muted">
-                        <div className="h-full rounded-full bg-primary" style={{ width: `${width}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
+          <DocumentSection title="Letzte Uploads" emptyText="Noch keine PDFs vorhanden." documents={recentDocuments} action={<Link href="/documents" className="text-sm font-medium text-primary hover:underline">Alle ansehen</Link>} />
         </div>
       </main>
     </div>
+  );
+}
+
+type DashboardDocument = {
+  id: string;
+  title: string;
+  year: number;
+  size: number;
+  favorites: { id: string }[];
+};
+
+function DocumentSection({
+  title,
+  emptyText,
+  documents,
+  action
+}: {
+  title: string;
+  emptyText: string;
+  documents: DashboardDocument[];
+  action?: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold tracking-normal">{title}</h2>
+        {action}
+      </div>
+      {documents.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border bg-white p-8 text-center">
+          <p className="text-sm text-muted-foreground">{emptyText}</p>
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {documents.map((document) => (
+            <DocumentCard key={document.id} document={document} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DocumentCard({ document }: { document: DashboardDocument }) {
+  return (
+    <article className="group flex min-h-[420px] flex-col rounded-lg border border-border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-md">
+      <Link href={`/documents/${document.id}`} className="block focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+        <DocumentThumbnail documentId={document.id} title={document.title} />
+      </Link>
+
+      <div className="mt-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="line-clamp-2 break-words text-sm font-semibold leading-5">{document.title}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{document.year} · {formatBytes(document.size)}</p>
+        </div>
+      </div>
+
+      <div className="mt-5 flex items-center justify-between gap-3">
+        <form action={toggleFavoriteDocumentAction}>
+          <input type="hidden" name="documentId" value={document.id} />
+          <button className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-xs font-medium transition hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+            <Heart size={15} className={document.favorites.length > 0 ? "fill-red-500 text-red-500" : ""} />
+            {document.favorites.length > 0 ? "Favorit" : "Merken"}
+          </button>
+        </form>
+        <span className="text-xs font-medium uppercase text-muted-foreground">PDF</span>
+      </div>
+
+      <div className="mt-auto grid grid-cols-2 gap-2 pt-5">
+        <Link title="Ansehen" href={`/documents/${document.id}`} className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border text-sm font-medium transition hover:bg-muted">
+          <Eye size={17} />
+          Ansehen
+        </Link>
+        <a title="Herunterladen" href={`/api/documents/${document.id}/download`} className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border text-sm font-medium transition hover:bg-muted">
+          <Download size={17} />
+          Download
+        </a>
+      </div>
+    </article>
   );
 }
 

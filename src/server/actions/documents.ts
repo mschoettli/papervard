@@ -83,6 +83,7 @@ export async function toggleFavoriteDocumentAction(formData: FormData) {
   }
 
   revalidatePath("/documents");
+  revalidatePath("/");
   revalidatePath(`/documents/${documentId}`);
 }
 
