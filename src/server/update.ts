@@ -13,7 +13,6 @@ export type UpdateStatus = {
 const repository = process.env.GITHUB_REPOSITORY ?? "mschoettli/papervard";
 const branch = process.env.GITHUB_BRANCH ?? "main";
 const updateTimeoutMs = 10 * 60 * 1000;
-const updateStartAckMs = 2 * 1000;
 
 type LatestCommit = {
   sha: string | null;
@@ -127,32 +126,22 @@ export async function triggerContainerUpdate() {
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), updateTimeoutMs);
-  const request = fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`
-    },
-    signal: controller.signal
-  }).finally(() => clearTimeout(timeout));
 
   try {
-    const response = await Promise.race<Response | "started">([
-      request,
-      new Promise<"started">((resolve) => setTimeout(() => resolve("started"), updateStartAckMs))
-    ]);
-
-    if (response === "started") {
-      request.catch(() => undefined);
-      return {
-        ok: true,
-        message: "Update wurde gestartet. Watchtower arbeitet im Hintergrund; die App kann gleich kurz neu laden."
-      };
-    }
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      signal: controller.signal
+    });
 
     if (!response.ok) {
+      const responseText = await response.text().catch(() => "");
+      const detail = responseText.trim() ? ` ${responseText.trim()}` : "";
       return {
         ok: false,
-        message: `Update konnte nicht gestartet werden. Watchtower antwortet mit ${response.status}.`
+        message: `Update wurde nicht abgeschlossen. Watchtower antwortet mit ${response.status}.${detail}`
       };
     }
   } catch (error) {
@@ -167,10 +156,12 @@ export async function triggerContainerUpdate() {
       ok: false,
       message: error instanceof Error ? `Update-API konnte nicht erreicht werden: ${error.message}` : "Update-API konnte nicht erreicht werden."
     };
+  } finally {
+    clearTimeout(timeout);
   }
 
   return {
     ok: true,
-    message: "Update wurde gestartet. Die App kann gleich kurz neu laden."
+    message: "Update ist abgeschlossen. Lade die App jetzt neu, um die neue Version zu verwenden."
   };
 }
