@@ -13,6 +13,7 @@ export type UpdateStatus = {
 const repository = process.env.GITHUB_REPOSITORY ?? "mschoettli/papervard";
 const branch = process.env.GITHUB_BRANCH ?? "main";
 const updateTimeoutMs = 10 * 60 * 1000;
+const updateStartAckMs = 2 * 1000;
 
 type LatestCommit = {
   sha: string | null;
@@ -126,15 +127,27 @@ export async function triggerContainerUpdate() {
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), updateTimeoutMs);
+  const request = fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    signal: controller.signal
+  }).finally(() => clearTimeout(timeout));
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`
-      },
-      signal: controller.signal
-    });
+    const response = await Promise.race<Response | "started">([
+      request,
+      new Promise<"started">((resolve) => setTimeout(() => resolve("started"), updateStartAckMs))
+    ]);
+
+    if (response === "started") {
+      request.catch(() => undefined);
+      return {
+        ok: true,
+        message: "Update wurde gestartet. Die App prueft jetzt, bis die neue Version wirklich aktiv ist."
+      };
+    }
 
     if (!response.ok) {
       const responseText = await response.text().catch(() => "");
@@ -162,6 +175,6 @@ export async function triggerContainerUpdate() {
 
   return {
     ok: true,
-    message: "Update ist abgeschlossen. Lade die App jetzt neu, um die neue Version zu verwenden."
+    message: "Update wurde gestartet. Die App prueft jetzt, bis die neue Version wirklich aktiv ist."
   };
 }

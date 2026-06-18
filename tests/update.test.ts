@@ -126,7 +126,7 @@ describe("triggerContainerUpdate", () => {
     });
   });
 
-  it("waits until Watchtower reports that the update has completed", async () => {
+  it("returns after Watchtower has accepted the update request so the client can verify the new version", async () => {
     vi.useFakeTimers();
     vi.stubEnv("UPDATE_API_URL", "http://watchtower:8080/v1/update");
     vi.stubEnv("WATCHTOWER_HTTP_API_TOKEN", "secret");
@@ -144,18 +144,14 @@ describe("triggerContainerUpdate", () => {
 
     const { triggerContainerUpdate } = await import("@/server/update");
     const resultPromise = triggerContainerUpdate();
-    let resolved = false;
-    resultPromise.then(() => {
-      resolved = true;
-    });
 
     await vi.advanceTimersByTimeAsync(2000);
-    expect(resolved).toBe(false);
-
-    finishUpdate(new Response(null, { status: 200 }));
     await expect(resultPromise).resolves.toEqual({
       ok: true,
-      message: "Update ist abgeschlossen. Lade die App jetzt neu, um die neue Version zu verwenden."
+      message: "Update wurde gestartet. Die App prueft jetzt, bis die neue Version wirklich aktiv ist."
     });
+
+    finishUpdate(new Response(null, { status: 200 }));
+    await vi.runOnlyPendingTimersAsync();
   });
 });

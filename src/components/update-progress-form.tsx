@@ -8,6 +8,16 @@ import { triggerUpdateAction, type UpdateActionState } from "@/server/actions/up
 const initialState: UpdateActionState = {};
 const reloadPollIntervalMs = 1200;
 const reloadMaxAttempts = 25;
+const updateStatusPollIntervalMs = 2500;
+const updateStatusMaxAttempts = 120;
+
+type UpdateStatusResponse = {
+  currentSha: string | null;
+  latestSha: string | null;
+  updateAvailable: boolean;
+  error: string | null;
+  verifiedCurrent: boolean;
+};
 
 const updateSteps = [
   { at: 0, progress: 8, label: "Update wird gestartet" },
@@ -39,17 +49,24 @@ function progressForElapsed(elapsedMs: number) {
 export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boolean }) {
   const [state, action, pending] = useActionState(triggerUpdateAction, initialState);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [checkingStatus, setCheckingStatus] = useState(false);
+  const [verified, setVerified] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [reloading, setReloading] = useState(false);
   const [reloadError, setReloadError] = useState<string | null>(null);
   const hasResult = state.ok !== undefined;
-  const succeeded = state.ok === true && !pending;
+  const updateStarted = state.ok === true && !pending;
+  const succeeded = updateStarted && verified;
   const failed = state.ok === false && !pending;
-  const active = pending || hasResult;
+  const active = pending || hasResult || checkingStatus;
 
   useEffect(() => {
     if (!pending) return;
 
     setElapsedMs(0);
+    setVerified(false);
+    setStatusError(null);
+    setReloadError(null);
     const startedAt = Date.now();
     const timer = window.setInterval(() => {
       setElapsedMs(Date.now() - startedAt);
@@ -58,11 +75,65 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
     return () => window.clearInterval(timer);
   }, [pending]);
 
+  useEffect(() => {
+    if (!updateStarted || verified) return;
+
+    let cancelled = false;
+    setCheckingStatus(true);
+    setStatusError(null);
+
+    async function pollUpdateStatus() {
+      for (let attempt = 1; attempt <= updateStatusMaxAttempts; attempt += 1) {
+        if (cancelled) return;
+
+        try {
+          const response = await fetch("/api/update/status", {
+            cache: "no-store",
+            credentials: "same-origin",
+            headers: {
+              "Cache-Control": "no-cache"
+            }
+          });
+
+          if (response.ok) {
+            const status = (await response.json()) as UpdateStatusResponse;
+
+            if (status.verifiedCurrent) {
+              setVerified(true);
+              setCheckingStatus(false);
+              setStatusError(null);
+              return;
+            }
+
+            if (status.error && !status.currentSha) {
+              setStatusError(status.error);
+            }
+          }
+        } catch {
+          // During the container restart the app can be unreachable for a moment.
+        }
+
+        await new Promise((resolve) => window.setTimeout(resolve, updateStatusPollIntervalMs));
+      }
+
+      if (!cancelled) {
+        setCheckingStatus(false);
+        setStatusError("Update laeuft moeglicherweise noch. Die neue Version wurde noch nicht bestaetigt.");
+      }
+    }
+
+    pollUpdateStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [updateStarted, verified]);
+
   const progressState = useMemo(() => {
     if (succeeded) {
       return {
         progress: 100,
-        label: "Update abgeschlossen"
+        label: "Neue Version aktiv"
       };
     }
 
@@ -77,11 +148,18 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
       return progressForElapsed(elapsedMs);
     }
 
+    if (checkingStatus || updateStarted) {
+      return {
+        progress: 96,
+        label: "Neue Version wird bestaetigt"
+      };
+    }
+
     return {
       progress: 0,
       label: "Bereit"
     };
-  }, [elapsedMs, failed, pending, succeeded]);
+  }, [checkingStatus, elapsedMs, failed, pending, succeeded, updateStarted]);
 
   async function reloadFreshApp() {
     const url = new URL(window.location.href);
@@ -119,9 +197,9 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
   return (
     <div className="w-full max-w-sm space-y-4 sm:text-right">
       <form action={action}>
-        <Button type="submit" disabled={!canTriggerUpdate || pending || succeeded} className="w-full sm:w-auto">
+        <Button type="submit" disabled={!canTriggerUpdate || pending || checkingStatus || succeeded} className="w-full sm:w-auto">
           {pending ? <Loader2 size={18} className="animate-spin" /> : succeeded ? <CheckCircle2 size={18} /> : <RefreshCw size={18} />}
-          {pending ? "Update laeuft" : succeeded ? "Update fertig" : canTriggerUpdate ? "Update starten" : "Kein Update"}
+          {pending ? "Update startet" : checkingStatus ? "Pruefe Version" : succeeded ? "Update fertig" : canTriggerUpdate ? "Update starten" : "Kein Update"}
         </Button>
       </form>
 
@@ -141,12 +219,13 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
 
           {state.message ? (
             <p className={`text-sm leading-6 ${failed ? "text-red-700" : "text-emerald-700"}`}>
-              {failed ? <XCircle size={16} className="mr-1 inline-block align-[-3px]" /> : <CheckCircle2 size={16} className="mr-1 inline-block align-[-3px]" />}
-              {state.message}
+              {failed ? <XCircle size={16} className="mr-1 inline-block align-[-3px]" /> : succeeded ? <CheckCircle2 size={16} className="mr-1 inline-block align-[-3px]" /> : <Loader2 size={16} className="mr-1 inline-block animate-spin align-[-3px]" />}
+              {succeeded ? "Update bestaetigt. Die neue Version ist aktiv und kann jetzt geladen werden." : state.message}
             </p>
           ) : (
             <p className="text-sm leading-6 text-muted-foreground">Bitte warten. Die App zeigt die neue Version erst nach erfolgreichem Abschluss an.</p>
           )}
+          {statusError ? <p className="text-sm leading-6 text-amber-700">{statusError}</p> : null}
 
           {succeeded ? (
             <Button type="button" variant="secondary" onClick={reloadFreshApp} disabled={reloading} className="w-full">
