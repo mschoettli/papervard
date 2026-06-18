@@ -22,10 +22,8 @@ export default async function SystemPage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="flex items-center gap-2">
-              {status.updateAvailable ? <Rocket size={20} className="text-primary" /> : <ShieldCheck size={20} className="text-emerald-700" />}
-              <h2 className="text-lg font-semibold">
-                {status.updateAvailable ? "Update verfuegbar" : "App ist aktuell"}
-              </h2>
+              {status.canTriggerUpdate ? <Rocket size={20} className="text-primary" /> : <ShieldCheck size={20} className="text-emerald-700" />}
+              <h2 className="text-lg font-semibold">{status.statusLabel}</h2>
             </div>
             <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
               <div>
@@ -37,6 +35,11 @@ export default async function SystemPage() {
                 <dd className="mt-1 font-mono">{shortSha(status.latestSha)}</dd>
               </div>
             </dl>
+            {!status.currentSha ? (
+              <p className="mt-4 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+                Die installierte Image-Version ist nicht im Container hinterlegt. Du kannst Watchtower trotzdem manuell starten.
+              </p>
+            ) : null}
             {status.error ? <p className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{status.error}</p> : null}
             {status.latestUrl ? (
               <a href={status.latestUrl} className="mt-4 inline-block text-sm font-medium text-primary hover:underline">
@@ -45,7 +48,7 @@ export default async function SystemPage() {
             ) : null}
           </div>
 
-          <UpdateProgressForm updateAvailable={status.updateAvailable} />
+          <UpdateProgressForm canTriggerUpdate={status.canTriggerUpdate} />
         </div>
       </section>
 

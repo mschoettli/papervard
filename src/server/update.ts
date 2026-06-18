@@ -5,6 +5,8 @@ export type UpdateStatus = {
   latestSha: string | null;
   latestUrl: string | null;
   updateAvailable: boolean;
+  canTriggerUpdate: boolean;
+  statusLabel: string;
   error: string | null;
 };
 
@@ -34,6 +36,8 @@ export async function getUpdateStatus(): Promise<UpdateStatus> {
         latestSha: null,
         latestUrl: null,
         updateAvailable: false,
+        canTriggerUpdate: true,
+        statusLabel: "Update-Status nicht pruefbar",
         error: `GitHub antwortet mit ${response.status}.`
       };
     }
@@ -44,11 +48,15 @@ export async function getUpdateStatus(): Promise<UpdateStatus> {
     };
     const latestSha = data.sha ?? null;
 
+    const updateAvailable = Boolean(currentSha && latestSha && currentSha !== latestSha);
+
     return {
       currentSha,
       latestSha,
       latestUrl: data.html_url ?? null,
-      updateAvailable: Boolean(currentSha && latestSha && currentSha !== latestSha),
+      updateAvailable,
+      canTriggerUpdate: updateAvailable || !currentSha,
+      statusLabel: updateAvailable ? "Update verfuegbar" : currentSha ? "App ist aktuell" : "Installierte Version unbekannt",
       error: null
     };
   } catch (error) {
@@ -57,6 +65,8 @@ export async function getUpdateStatus(): Promise<UpdateStatus> {
       latestSha: null,
       latestUrl: null,
       updateAvailable: false,
+      canTriggerUpdate: true,
+      statusLabel: "Update-Status nicht pruefbar",
       error: error instanceof Error ? error.message : "Update-Pruefung fehlgeschlagen."
     };
   }
@@ -73,12 +83,25 @@ export async function triggerContainerUpdate() {
     };
   }
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  });
+  let response: Response;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      signal: controller.signal
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? `Update-API konnte nicht erreicht werden: ${error.message}` : "Update-API konnte nicht erreicht werden."
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     return {

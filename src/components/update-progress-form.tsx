@@ -6,7 +6,7 @@ import { triggerUpdateAction, type UpdateActionState } from "@/server/actions/up
 
 const initialState: UpdateActionState = {};
 
-export function UpdateProgressForm({ updateAvailable }: { updateAvailable: boolean }) {
+export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boolean }) {
   const [state, action, pending] = useActionState(triggerUpdateAction, initialState);
   const [progress, setProgress] = useState(0);
   const started = pending || state.ok !== undefined || progress > 0;
@@ -31,11 +31,11 @@ export function UpdateProgressForm({ updateAvailable }: { updateAvailable: boole
     <div className="w-full max-w-xs space-y-3 sm:text-right">
       <form action={action}>
         <button
-          disabled={!updateAvailable || pending || complete}
+          disabled={!canTriggerUpdate || pending || complete}
           className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50 sm:w-auto"
         >
           <RefreshCw size={18} className={pending ? "animate-spin" : ""} />
-          {pending ? "Update läuft ..." : complete ? "Update gestartet" : "Aktualisieren"}
+          {pending ? "Update läuft ..." : complete ? "Update gestartet" : canTriggerUpdate ? "Aktualisieren" : "Kein Update"}
         </button>
       </form>
 
