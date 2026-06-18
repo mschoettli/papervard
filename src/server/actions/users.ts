@@ -1,37 +1,55 @@
 "use server";
 
 import bcrypt from "bcryptjs";
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/server/auth";
 
 const userSchema = z.object({
-  email: z.string().email(),
-  name: z.string().min(2),
-  password: z.string().min(10),
+  email: z.string().trim().email("Bitte gib eine gültige E-Mail-Adresse ein."),
+  name: z.string().trim().min(2, "Der Name muss mindestens 2 Zeichen lang sein."),
+  password: z.string().min(10, "Das Passwort muss mindestens 10 Zeichen lang sein."),
   role: z.enum(["admin", "user"])
 });
 
-export async function createUserAction(formData: FormData) {
+export type CreateUserState = {
+  message?: string;
+  ok?: boolean;
+};
+
+export async function createUserAction(_: CreateUserState | undefined, formData: FormData): Promise<CreateUserState> {
   await requireAdmin();
-  const parsed = userSchema.parse({
+  const parsed = userSchema.safeParse({
     email: formData.get("email"),
     name: formData.get("name"),
     password: formData.get("password"),
     role: formData.get("role")
   });
 
-  await prisma.user.create({
-    data: {
-      email: parsed.email.toLowerCase(),
-      name: parsed.name,
-      passwordHash: await bcrypt.hash(parsed.password, 12),
-      role: parsed.role
+  if (!parsed.success) {
+    return { message: parsed.error.issues[0]?.message ?? "Bitte prüfe die Eingaben." };
+  }
+
+  try {
+    await prisma.user.create({
+      data: {
+        email: parsed.data.email.toLowerCase(),
+        name: parsed.data.name,
+        passwordHash: await bcrypt.hash(parsed.data.password, 12),
+        role: parsed.data.role
+      }
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return { message: "Für diese E-Mail-Adresse gibt es bereits ein Konto." };
     }
-  });
+    throw error;
+  }
 
   revalidatePath("/admin/users");
+  return { ok: true, message: "Nutzer wurde erstellt." };
 }
 
 export async function toggleUserAction(formData: FormData) {
