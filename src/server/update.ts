@@ -13,6 +13,7 @@ export type UpdateStatus = {
 const repository = process.env.GITHUB_REPOSITORY ?? "mschoettli/papervard";
 const branch = process.env.GITHUB_BRANCH ?? "main";
 const updateTimeoutMs = 10 * 60 * 1000;
+const updateStartAckMs = 2 * 1000;
 
 export function currentVersion() {
   const sha = process.env.APP_GIT_SHA;
@@ -84,17 +85,36 @@ export async function triggerContainerUpdate() {
     };
   }
 
-  let response: Response;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), updateTimeoutMs);
+  const request = fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    signal: controller.signal
+  }).finally(() => clearTimeout(timeout));
+
   try {
-    response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`
-      },
-      signal: controller.signal
-    });
+    const response = await Promise.race<Response | "started">([
+      request,
+      new Promise<"started">((resolve) => setTimeout(() => resolve("started"), updateStartAckMs))
+    ]);
+
+    if (response === "started") {
+      request.catch(() => undefined);
+      return {
+        ok: true,
+        message: "Update wurde gestartet. Watchtower arbeitet im Hintergrund; die App kann gleich kurz neu laden."
+      };
+    }
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        message: `Update konnte nicht gestartet werden. Watchtower antwortet mit ${response.status}.`
+      };
+    }
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       return {
@@ -106,15 +126,6 @@ export async function triggerContainerUpdate() {
     return {
       ok: false,
       message: error instanceof Error ? `Update-API konnte nicht erreicht werden: ${error.message}` : "Update-API konnte nicht erreicht werden."
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  if (!response.ok) {
-    return {
-      ok: false,
-      message: `Update konnte nicht gestartet werden. Watchtower antwortet mit ${response.status}.`
     };
   }
 

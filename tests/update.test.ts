@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
@@ -90,5 +91,34 @@ describe("triggerContainerUpdate", () => {
       ok: false,
       message: "Update-API hat nicht rechtzeitig geantwortet. Watchtower laeuft eventuell noch; bitte in ein paar Minuten neu laden."
     });
+  });
+
+  it("returns after Watchtower accepted a long-running update request", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("UPDATE_API_URL", "http://watchtower:8080/v1/update");
+    vi.stubEnv("WATCHTOWER_HTTP_API_TOKEN", "secret");
+
+    let finishUpdate: (response: Response) => void = () => undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            finishUpdate = resolve;
+          })
+      )
+    );
+
+    const { triggerContainerUpdate } = await import("@/server/update");
+    const resultPromise = triggerContainerUpdate();
+
+    await vi.advanceTimersByTimeAsync(2000);
+    await expect(resultPromise).resolves.toEqual({
+      ok: true,
+      message: "Update wurde gestartet. Watchtower arbeitet im Hintergrund; die App kann gleich kurz neu laden."
+    });
+
+    finishUpdate(new Response(null, { status: 200 }));
+    await vi.runOnlyPendingTimersAsync();
   });
 });
