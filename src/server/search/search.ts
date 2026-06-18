@@ -15,12 +15,31 @@ type RawSearchRow = {
   semantic_rank: number | null;
 };
 
-export async function hybridSearch(query: string, year?: number) {
+export type SearchMode = "hybrid" | "keyword" | "semantic";
+
+export type SearchFilters = {
+  year?: number;
+  yearFrom?: number;
+  yearTo?: number;
+  title?: string;
+  status?: "queued" | "processing" | "indexed" | "failed";
+  mode?: SearchMode;
+};
+
+export async function hybridSearch(query: string, filters: number | SearchFilters = {}) {
   const cleanQuery = query.trim();
   if (cleanQuery.length < 2) return [];
 
+  const normalizedFilters = typeof filters === "number" ? { year: filters } : filters;
   const embedding = vectorLiteral(embedText(cleanQuery));
-  const yearFilter = year && Number.isInteger(year) ? year : null;
+  const yearFilter = normalizedFilters.year && Number.isInteger(normalizedFilters.year) ? normalizedFilters.year : null;
+  const yearFrom = normalizedFilters.yearFrom && Number.isInteger(normalizedFilters.yearFrom) ? normalizedFilters.yearFrom : null;
+  const yearTo = normalizedFilters.yearTo && Number.isInteger(normalizedFilters.yearTo) ? normalizedFilters.yearTo : null;
+  const titleFilter = normalizedFilters.title?.trim() ? `%${normalizedFilters.title.trim()}%` : null;
+  const statusFilter = normalizedFilters.status ?? "indexed";
+  const mode = normalizedFilters.mode ?? "hybrid";
+  const allowKeyword = mode === "hybrid" || mode === "keyword";
+  const allowSemantic = mode === "hybrid" || mode === "semantic";
 
   const rows = await prisma.$queryRawUnsafe<RawSearchRow[]>(`
     WITH q AS (
@@ -41,18 +60,21 @@ export async function hybridSearch(query: string, year?: number) {
       FROM "TextChunk" c
       JOIN "Document" d ON d.id = c."documentId"
       CROSS JOIN q
-      WHERE d."indexStatus" = 'indexed'
+      WHERE d."indexStatus" = $4::"IndexStatus"
         AND ($3::int IS NULL OR d.year = $3::int)
+        AND ($5::int IS NULL OR d.year >= $5::int)
+        AND ($6::int IS NULL OR d.year <= $6::int)
+        AND ($7::text IS NULL OR d.title ILIKE $7::text)
         AND (
-          c.tsv @@ q.tsq
-          OR (1 - (c.embedding <=> q.embedding)) > 0.14
+          ($8::boolean AND c.tsv @@ q.tsq)
+          OR ($9::boolean AND (1 - (c.embedding <=> q.embedding)) > 0.14)
         )
     )
     SELECT *
     FROM ranked
     ORDER BY ((COALESCE(keyword_rank, 0) * 0.62) + (COALESCE(semantic_rank, 0) * 0.38)) DESC
     LIMIT 50
-  `, cleanQuery, embedding, yearFilter);
+  `, cleanQuery, embedding, yearFilter, statusFilter, yearFrom, yearTo, titleFilter, allowKeyword, allowSemantic);
 
   return rows.map((row) => ({
     chunkId: row.chunk_id,

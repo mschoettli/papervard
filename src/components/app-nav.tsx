@@ -1,12 +1,22 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
 import type React from "react";
-import { Archive, FileSearch, LogOut, Settings, Upload, Users } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { Archive, FileSearch, Home, LogOut, Settings, Upload, Users } from "lucide-react";
 import { logoutAction } from "@/server/actions/auth";
+import { cn } from "@/lib/utils";
 
-export function AppNav({ role }: { role: "admin" | "user" }) {
+type AppUser = {
+  name: string;
+  email: string;
+  role: "admin" | "user";
+};
+
+export function AppNav({ user }: { user: AppUser }) {
   return (
-    <aside className="border-b border-border bg-white lg:min-h-screen lg:w-64 lg:border-b-0 lg:border-r">
+    <aside className="border-b border-border bg-white/95 lg:flex lg:min-h-screen lg:w-72 lg:flex-col lg:border-b-0 lg:border-r">
       <div className="flex h-16 items-center border-b border-border px-5">
         <Link href="/documents" className="flex items-center gap-3 text-lg font-semibold tracking-normal">
           <Image
@@ -21,19 +31,30 @@ export function AppNav({ role }: { role: "admin" | "user" }) {
           Papervard
         </Link>
       </div>
-      <nav className="flex gap-1 overflow-x-auto p-3 lg:block">
-        <NavItem href="/documents" icon={<Archive size={18} />} label="Dokumente" />
-        <NavItem href="/search" icon={<FileSearch size={18} />} label="Suche" />
-        {role === "admin" ? (
-          <>
+      <nav className="flex gap-1 overflow-x-auto p-3 lg:block lg:space-y-6">
+        <div className="flex gap-1 lg:block lg:space-y-1">
+          <NavItem href="/" icon={<Home size={18} />} label="Dashboard" />
+          <NavItem href="/documents" icon={<Archive size={18} />} label="Dokumente" />
+          <NavItem href="/search" icon={<FileSearch size={18} />} label="Suche" />
+        </div>
+        {user.role === "admin" ? (
+          <div className="flex gap-1 lg:block lg:space-y-1">
+            <p className="hidden px-3 text-xs font-semibold uppercase text-muted-foreground lg:block">Admin</p>
             <NavItem href="/admin/uploads" icon={<Upload size={18} />} label="Uploads" />
             <NavItem href="/admin/documents" icon={<Archive size={18} />} label="Verwaltung" />
             <NavItem href="/admin/users" icon={<Users size={18} />} label="Benutzer" />
             <NavItem href="/admin/system" icon={<Settings size={18} />} label="System" />
-          </>
+          </div>
         ) : null}
       </nav>
-      <form action={logoutAction} className="p-3 lg:mt-auto">
+      <div className="hidden border-t border-border p-3 lg:mt-auto lg:block">
+        <div className="mb-3 rounded-md bg-muted p-3">
+          <p className="truncate text-sm font-medium">{user.name}</p>
+          <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+          <p className="mt-2 text-xs font-medium uppercase text-primary">{user.role === "admin" ? "Admin" : "Nutzer"}</p>
+        </div>
+      </div>
+      <form action={logoutAction} className="p-3 lg:pt-0">
         <button className="flex h-10 w-full items-center gap-2 rounded-md px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
           <LogOut size={18} />
           Abmelden
@@ -44,10 +65,16 @@ export function AppNav({ role }: { role: "admin" | "user" }) {
 }
 
 function NavItem({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
+  const pathname = usePathname();
+  const active = href === "/" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+
   return (
     <Link
       href={href}
-      className="flex h-10 shrink-0 items-center gap-2 rounded-md px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+      className={cn(
+        "flex h-10 shrink-0 items-center gap-2 rounded-md px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
+        active && "bg-primary/10 font-medium text-primary"
+      )}
     >
       {icon}
       {label}

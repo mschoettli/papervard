@@ -1,24 +1,33 @@
 import Link from "next/link";
-import { Download, Eye, Search } from "lucide-react";
+import { Download, Eye, Heart, Search, SlidersHorizontal } from "lucide-react";
 import { StatusPill } from "@/components/status-pill";
-import { formatBytes } from "@/lib/utils";
+import { formatBytes, statusLabel } from "@/lib/utils";
+import { requireUser } from "@/server/auth";
 import { prisma } from "@/lib/prisma";
 
 export default async function DocumentsPage({
   searchParams
 }: {
-  searchParams: Promise<{ year?: string }>;
+  searchParams: Promise<{ year?: string; status?: string; sort?: string }>;
 }) {
+  const user = await requireUser();
   const params = await searchParams;
   const selectedYear = params.year ? Number(params.year) : undefined;
+  const selectedStatus = ["queued", "processing", "indexed", "failed"].includes(params.status ?? "") ? params.status : undefined;
+  const sort = params.sort ?? "newest";
   const years = await prisma.document.findMany({
     select: { year: true },
     distinct: ["year"],
     orderBy: { year: "desc" }
   });
+  const statusCounts = await prisma.document.groupBy({ by: ["indexStatus"], _count: { _all: true } });
   const documents = await prisma.document.findMany({
-    where: selectedYear ? { year: selectedYear } : undefined,
-    orderBy: [{ year: "desc" }, { title: "asc" }]
+    where: {
+      ...(selectedYear ? { year: selectedYear } : {}),
+      ...(selectedStatus ? { indexStatus: selectedStatus as "queued" | "processing" | "indexed" | "failed" } : {})
+    },
+    include: { favorites: { where: { userId: user.id }, select: { id: true } } },
+    orderBy: sort === "title" ? [{ title: "asc" }] : sort === "year" ? [{ year: "desc" }, { title: "asc" }] : [{ createdAt: "desc" }]
   });
 
   return (
@@ -37,19 +46,47 @@ export default async function DocumentsPage({
         </Link>
       </header>
 
-      <form className="flex max-w-xs items-center gap-2">
-        <label htmlFor="year" className="text-sm font-medium">
-          Jahr
-        </label>
-        <select id="year" name="year" defaultValue={selectedYear ?? ""} className="h-10 flex-1 rounded-md border border-border bg-white px-3">
-          <option value="">Alle Jahre</option>
-          {years.map((item) => (
-            <option key={item.year} value={item.year}>
-              {item.year}
-            </option>
-          ))}
-        </select>
-        <button className="h-10 rounded-md border border-border bg-white px-3 text-sm">Filtern</button>
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {["indexed", "processing", "queued", "failed"].map((status) => (
+          <div key={status} className="rounded-lg border border-border bg-white p-4">
+            <p className="text-sm text-muted-foreground">{statusLabel(status)}</p>
+            <p className="mt-2 text-2xl font-semibold">{statusCounts.find((item) => item.indexStatus === status)?._count._all ?? 0}</p>
+          </div>
+        ))}
+      </section>
+
+      <form className="grid gap-3 rounded-lg border border-border bg-white p-4 md:grid-cols-[1fr_1fr_1fr_auto]">
+        <div>
+          <label htmlFor="year" className="text-xs font-medium uppercase text-muted-foreground">Jahr</label>
+          <select id="year" name="year" defaultValue={selectedYear ?? ""} className="mt-1 h-10 w-full rounded-md border border-border bg-white px-3">
+            <option value="">Alle Jahre</option>
+            {years.map((item) => (
+              <option key={item.year} value={item.year}>{item.year}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="status" className="text-xs font-medium uppercase text-muted-foreground">Status</label>
+          <select id="status" name="status" defaultValue={selectedStatus ?? ""} className="mt-1 h-10 w-full rounded-md border border-border bg-white px-3">
+            <option value="">Alle Status</option>
+            <option value="indexed">Bereit</option>
+            <option value="processing">Indexiert</option>
+            <option value="queued">Wartet</option>
+            <option value="failed">Fehler</option>
+          </select>
+        </div>
+        <div>
+          <label htmlFor="sort" className="text-xs font-medium uppercase text-muted-foreground">Sortierung</label>
+          <select id="sort" name="sort" defaultValue={sort} className="mt-1 h-10 w-full rounded-md border border-border bg-white px-3">
+            <option value="newest">Neueste zuerst</option>
+            <option value="year">Jahr</option>
+            <option value="title">Titel</option>
+          </select>
+        </div>
+        <button className="inline-flex h-10 items-center justify-center gap-2 self-end rounded-md border border-border bg-white px-4 text-sm font-medium hover:bg-muted">
+          <SlidersHorizontal size={17} />
+          Filtern
+        </button>
       </form>
 
       {documents.length === 0 ? (
@@ -58,7 +95,8 @@ export default async function DocumentsPage({
           <p className="mt-2 text-sm text-muted-foreground">Admins können unter Uploads neue Dokumente hinzufügen.</p>
         </section>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border bg-white">
+        <>
+        <div className="hidden overflow-hidden rounded-lg border border-border bg-white md:block">
           <table className="w-full min-w-[760px] border-collapse text-sm">
             <thead className="bg-muted text-left text-xs uppercase text-muted-foreground">
               <tr>
@@ -72,7 +110,12 @@ export default async function DocumentsPage({
             <tbody>
               {documents.map((document) => (
                 <tr key={document.id} className="border-t border-border">
-                  <td className="max-w-[360px] px-4 py-3 font-medium">{document.title}</td>
+                  <td className="max-w-[360px] px-4 py-3 font-medium">
+                    <div className="flex items-center gap-2">
+                      {document.favorites.length > 0 ? <Heart size={15} className="fill-red-500 text-red-500" /> : null}
+                      <span className="truncate">{document.title}</span>
+                    </div>
+                  </td>
                   <td className="px-4 py-3">{document.year}</td>
                   <td className="px-4 py-3"><StatusPill status={document.indexStatus} /></td>
                   <td className="px-4 py-3 text-muted-foreground">{formatBytes(document.size)}</td>
@@ -91,6 +134,31 @@ export default async function DocumentsPage({
             </tbody>
           </table>
         </div>
+        <div className="grid gap-3 md:hidden">
+          {documents.map((document) => (
+            <article key={document.id} className="rounded-lg border border-border bg-white p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="truncate font-semibold">{document.title}</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">{document.year} · {formatBytes(document.size)}</p>
+                </div>
+                {document.favorites.length > 0 ? <Heart size={18} className="shrink-0 fill-red-500 text-red-500" /> : null}
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <StatusPill status={document.indexStatus} />
+                <div className="flex gap-2">
+                  <Link title="Ansehen" href={`/documents/${document.id}`} className="inline-flex size-9 items-center justify-center rounded-md border border-border hover:bg-muted">
+                    <Eye size={17} />
+                  </Link>
+                  <a title="Herunterladen" href={`/api/documents/${document.id}/download`} className="inline-flex size-9 items-center justify-center rounded-md border border-border hover:bg-muted">
+                    <Download size={17} />
+                  </a>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+        </>
       )}
     </div>
   );

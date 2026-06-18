@@ -30,6 +30,8 @@ model User {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  favorites    FavoriteDocument[]
+  savedSearches SavedSearch[]
 }
 
 model Document {
@@ -48,9 +50,38 @@ model Document {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
   chunks        TextChunk[]
+  favorites     FavoriteDocument[]
 
   @@index([year])
   @@index([indexStatus])
+}
+
+model FavoriteDocument {
+  id         String   @id @default(cuid())
+  userId     String
+  documentId String
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, documentId])
+  @@index([documentId])
+}
+
+model SavedSearch {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  query     String
+  yearFrom  Int?
+  yearTo    Int?
+  title     String?
+  mode      String   @default("hybrid")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model TextChunk {
