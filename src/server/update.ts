@@ -15,62 +15,102 @@ const branch = process.env.GITHUB_BRANCH ?? "main";
 const updateTimeoutMs = 10 * 60 * 1000;
 const updateStartAckMs = 2 * 1000;
 
+type LatestCommit = {
+  sha: string | null;
+  url: string | null;
+};
+
 export function currentVersion() {
   const sha = process.env.APP_GIT_SHA;
   return sha && sha !== "unknown" ? sha : null;
+}
+
+function updateStatus(currentSha: string | null, latest: LatestCommit, error: string | null): UpdateStatus {
+  const updateAvailable = Boolean(currentSha && latest.sha && currentSha !== latest.sha);
+
+  return {
+    currentSha,
+    latestSha: latest.sha,
+    latestUrl: latest.url,
+    updateAvailable,
+    canTriggerUpdate: updateAvailable || !currentSha || Boolean(error),
+    statusLabel: error
+      ? "Update-Status nicht pruefbar"
+      : updateAvailable
+        ? "Update verfuegbar"
+        : currentSha
+          ? "App ist aktuell"
+          : "Installierte Version unbekannt",
+    error
+  };
+}
+
+async function fetchLatestCommitFromApi(): Promise<LatestCommit> {
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "papervard-update-check"
+  };
+  const githubToken = process.env.GITHUB_TOKEN;
+  if (githubToken) {
+    headers.Authorization = `Bearer ${githubToken}`;
+  }
+
+  const response = await fetch(`https://api.github.com/repos/${repository}/commits/${branch}`, {
+    headers,
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw new Error(`GitHub API antwortet mit ${response.status}.`);
+  }
+
+  const data = (await response.json()) as {
+    sha?: string;
+    html_url?: string;
+  };
+
+  return {
+    sha: data.sha ?? null,
+    url: data.html_url ?? null
+  };
+}
+
+async function fetchLatestCommitFromFeed(): Promise<LatestCommit> {
+  const response = await fetch(`https://github.com/${repository}/commits/${branch}.atom`, {
+    headers: {
+      Accept: "application/atom+xml",
+      "User-Agent": "papervard-update-check"
+    },
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw new Error(`GitHub Feed antwortet mit ${response.status}.`);
+  }
+
+  const feed = await response.text();
+  const url = feed.match(/<entry>[\s\S]*?<link[^>]+href="([^"]+)"/)?.[1] ?? null;
+  const sha = url?.match(/\/commit\/([a-f0-9]{7,40})/i)?.[1] ?? null;
+
+  return {
+    sha,
+    url
+  };
 }
 
 export async function getUpdateStatus(): Promise<UpdateStatus> {
   const currentSha = currentVersion();
 
   try {
-    const response = await fetch(`https://api.github.com/repos/${repository}/commits/${branch}`, {
-      headers: {
-        Accept: "application/vnd.github+json",
-        "User-Agent": "papervard-update-check"
-      },
-      cache: "no-store"
-    });
-
-    if (!response.ok) {
-      return {
-        currentSha,
-        latestSha: null,
-        latestUrl: null,
-        updateAvailable: false,
-        canTriggerUpdate: true,
-        statusLabel: "Update-Status nicht pruefbar",
-        error: `GitHub antwortet mit ${response.status}.`
-      };
+    return updateStatus(currentSha, await fetchLatestCommitFromApi(), null);
+  } catch (apiError) {
+    try {
+      return updateStatus(currentSha, await fetchLatestCommitFromFeed(), null);
+    } catch (feedError) {
+      const apiMessage = apiError instanceof Error ? apiError.message : "GitHub API fehlgeschlagen.";
+      const feedMessage = feedError instanceof Error ? feedError.message : "GitHub Feed fehlgeschlagen.";
+      return updateStatus(currentSha, { sha: null, url: null }, `${apiMessage} ${feedMessage}`);
     }
-
-    const data = (await response.json()) as {
-      sha?: string;
-      html_url?: string;
-    };
-    const latestSha = data.sha ?? null;
-
-    const updateAvailable = Boolean(currentSha && latestSha && currentSha !== latestSha);
-
-    return {
-      currentSha,
-      latestSha,
-      latestUrl: data.html_url ?? null,
-      updateAvailable,
-      canTriggerUpdate: updateAvailable || !currentSha,
-      statusLabel: updateAvailable ? "Update verfuegbar" : currentSha ? "App ist aktuell" : "Installierte Version unbekannt",
-      error: null
-    };
-  } catch (error) {
-    return {
-      currentSha,
-      latestSha: null,
-      latestUrl: null,
-      updateAvailable: false,
-      canTriggerUpdate: true,
-      statusLabel: "Update-Status nicht pruefbar",
-      error: error instanceof Error ? error.message : "Update-Pruefung fehlgeschlagen."
-    };
   }
 }
 

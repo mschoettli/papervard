@@ -52,6 +52,39 @@ describe("update status", () => {
       statusLabel: "App ist aktuell"
     });
   });
+
+  it("falls back to the public commit feed when the GitHub API is rate limited", async () => {
+    vi.stubEnv("APP_GIT_SHA", "4caf8de1234567890");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response("rate limited", { status: 403 }))
+        .mockResolvedValueOnce(
+          new Response(
+            `<feed>
+              <entry>
+                <link href="https://github.com/mschoettli/papervard/commit/4caf8de1234567890" />
+              </entry>
+            </feed>`,
+            { status: 200, headers: { "Content-Type": "application/atom+xml" } }
+          )
+        )
+    );
+
+    const { getUpdateStatus } = await import("@/server/update");
+    const status = await getUpdateStatus();
+
+    expect(status).toMatchObject({
+      currentSha: "4caf8de1234567890",
+      latestSha: "4caf8de1234567890",
+      latestUrl: "https://github.com/mschoettli/papervard/commit/4caf8de1234567890",
+      updateAvailable: false,
+      canTriggerUpdate: false,
+      statusLabel: "App ist aktuell",
+      error: null
+    });
+  });
 });
 
 describe("triggerContainerUpdate", () => {
