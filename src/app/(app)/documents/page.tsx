@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { Download, Eye, Heart, Search, SlidersHorizontal } from "lucide-react";
 import { DocumentThumbnail } from "@/components/document-thumbnail";
-import { StatusPill } from "@/components/status-pill";
 import { formatBytes, statusLabel } from "@/lib/utils";
+import { toggleFavoriteDocumentAction } from "@/server/actions/documents";
 import { requireUser } from "@/server/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -108,11 +108,16 @@ export default async function DocumentsPage({
                   <h2 className="line-clamp-2 break-words text-sm font-semibold leading-5">{document.title}</h2>
                   <p className="mt-1 text-sm text-muted-foreground">{document.year} · {formatBytes(document.size)}</p>
                 </div>
-                {document.favorites.length > 0 ? <Heart size={18} className="shrink-0 fill-red-500 text-red-500" /> : null}
               </div>
 
               <div className="mt-5 flex items-center justify-between gap-3">
-                <StatusPill status={document.indexStatus} />
+                <form action={toggleFavoriteDocumentAction}>
+                  <input type="hidden" name="documentId" value={document.id} />
+                  <button className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-xs font-medium transition hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+                    <Heart size={15} className={document.favorites.length > 0 ? "fill-red-500 text-red-500" : ""} />
+                    {document.favorites.length > 0 ? "Favorit" : "Merken"}
+                  </button>
+                </form>
                 <span className="text-xs font-medium uppercase text-muted-foreground">PDF</span>
               </div>
 
