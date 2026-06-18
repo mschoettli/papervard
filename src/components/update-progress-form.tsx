@@ -7,7 +7,7 @@ import { Button } from "@/components/button";
 const reloadPollIntervalMs = 1200;
 const reloadMaxAttempts = 25;
 const updateStatusPollIntervalMs = 2500;
-const updateStatusMaxAttempts = 120;
+const updateStatusMaxAttempts = 36;
 
 type UpdateActionState = {
   ok?: boolean;
@@ -58,6 +58,7 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [verified, setVerified] = useState(false);
   const [startedFromBootId, setStartedFromBootId] = useState<string | null>(null);
+  const [lastStatus, setLastStatus] = useState<UpdateStatusResponse | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [reloading, setReloading] = useState(false);
   const [reloadError, setReloadError] = useState<string | null>(null);
@@ -65,6 +66,7 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
   const updateStarted = state.ok === true && !pending;
   const succeeded = updateStarted && verified;
   const failed = state.ok === false && !pending;
+  const blocked = updateStarted && !checkingStatus && !verified && Boolean(statusError);
   const active = pending || hasResult || checkingStatus;
 
   useEffect(() => {
@@ -73,6 +75,7 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
     setElapsedMs(0);
     setVerified(false);
     setStartedFromBootId(null);
+    setLastStatus(null);
     setStatusError(null);
     setReloadError(null);
     const startedAt = Date.now();
@@ -107,12 +110,14 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
     setElapsedMs(0);
     setVerified(false);
     setStartedFromBootId(null);
+    setLastStatus(null);
     setStatusError(null);
     setReloadError(null);
 
     try {
       const beforeStatus = await fetchUpdateStatus().catch(() => null);
       setStartedFromBootId(beforeStatus?.bootId ?? null);
+      setLastStatus(beforeStatus);
 
       const response = await fetch("/api/update/start", {
         method: "POST",
@@ -157,6 +162,7 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
 
         try {
           const status = await fetchUpdateStatus();
+          setLastStatus(status);
           const bootChanged = Boolean(startedFromBootId && status.bootId && status.bootId !== startedFromBootId);
 
           if (status.verifiedCurrent || bootChanged) {
@@ -178,7 +184,7 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
 
       if (!cancelled) {
         setCheckingStatus(false);
-        setStatusError("Update laeuft moeglicherweise noch. Die neue Version wurde noch nicht bestaetigt.");
+        setStatusError("Kein App-Neustart erkannt. Watchtower hat vermutlich kein neues Image gezogen oder das neue Image ist noch nicht angekommen.");
       }
     }
 
@@ -197,10 +203,10 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
       };
     }
 
-    if (failed) {
+    if (failed || blocked) {
       return {
         progress: 100,
-        label: "Update fehlgeschlagen"
+        label: blocked ? "Neustart nicht erkannt" : "Update fehlgeschlagen"
       };
     }
 
@@ -219,7 +225,7 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
       progress: 0,
       label: "Bereit"
     };
-  }, [checkingStatus, elapsedMs, failed, pending, succeeded, updateStarted]);
+  }, [blocked, checkingStatus, elapsedMs, failed, pending, succeeded, updateStarted]);
 
   async function reloadFreshApp() {
     const url = new URL(window.location.href);
@@ -270,20 +276,40 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
 
           <div className="h-3 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressState.progress}>
             <div
-              className={`h-full rounded-full transition-all duration-500 ${failed ? "bg-destructive" : "bg-primary"}`}
+              className={`h-full rounded-full transition-all duration-500 ${failed || blocked ? "bg-destructive" : "bg-primary"}`}
               style={{ width: `${progressState.progress}%` }}
             />
           </div>
 
           {state.message ? (
-            <p className={`text-sm leading-6 ${failed ? "text-red-700" : "text-emerald-700"}`}>
-              {failed ? <XCircle size={16} className="mr-1 inline-block align-[-3px]" /> : succeeded ? <CheckCircle2 size={16} className="mr-1 inline-block align-[-3px]" /> : <Loader2 size={16} className="mr-1 inline-block animate-spin align-[-3px]" />}
+            <p className={`text-sm leading-6 ${failed || blocked ? "text-red-700" : "text-emerald-700"}`}>
+              {failed || blocked ? <XCircle size={16} className="mr-1 inline-block align-[-3px]" /> : succeeded ? <CheckCircle2 size={16} className="mr-1 inline-block align-[-3px]" /> : <Loader2 size={16} className="mr-1 inline-block animate-spin align-[-3px]" />}
               {succeeded ? "Update bestaetigt. Die neue Version ist aktiv und kann jetzt geladen werden." : state.message}
             </p>
           ) : (
             <p className="text-sm leading-6 text-muted-foreground">Bitte warten. Die App zeigt die neue Version erst nach erfolgreichem Abschluss an.</p>
           )}
-          {statusError ? <p className="text-sm leading-6 text-amber-700">{statusError}</p> : null}
+          {statusError ? <p className={`text-sm leading-6 ${blocked ? "text-red-700" : "text-amber-700"}`}>{statusError}</p> : null}
+          {blocked && lastStatus ? (
+            <dl className="grid gap-1 rounded-md bg-red-50 p-3 text-xs text-red-800">
+              <div className="flex justify-between gap-3">
+                <dt>Vorheriger Start</dt>
+                <dd className="font-mono">{startedFromBootId ? startedFromBootId.slice(0, 8) : "unbekannt"}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt>Aktueller Start</dt>
+                <dd className="font-mono">{lastStatus.bootId ? lastStatus.bootId.slice(0, 8) : "unbekannt"}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt>Installiert</dt>
+                <dd className="font-mono">{lastStatus.currentSha ? lastStatus.currentSha.slice(0, 7) : "unbekannt"}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt>Ziel</dt>
+                <dd className="font-mono">{lastStatus.latestSha ? lastStatus.latestSha.slice(0, 7) : "unbekannt"}</dd>
+              </div>
+            </dl>
+          ) : null}
 
           {succeeded ? (
             <Button type="button" variant="secondary" onClick={reloadFreshApp} disabled={reloading} className="w-full">
