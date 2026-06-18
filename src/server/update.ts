@@ -12,6 +12,7 @@ export type UpdateStatus = {
 
 const repository = process.env.GITHUB_REPOSITORY ?? "mschoettli/papervard";
 const branch = process.env.GITHUB_BRANCH ?? "main";
+const updateTimeoutMs = 10 * 60 * 1000;
 
 export function currentVersion() {
   const sha = process.env.APP_GIT_SHA;
@@ -85,7 +86,7 @@ export async function triggerContainerUpdate() {
 
   let response: Response;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+  const timeout = setTimeout(() => controller.abort(), updateTimeoutMs);
   try {
     response = await fetch(url, {
       method: "POST",
@@ -95,6 +96,13 @@ export async function triggerContainerUpdate() {
       signal: controller.signal
     });
   } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return {
+        ok: false,
+        message: "Update-API hat nicht rechtzeitig geantwortet. Watchtower laeuft eventuell noch; bitte in ein paar Minuten neu laden."
+      };
+    }
+
     return {
       ok: false,
       message: error instanceof Error ? `Update-API konnte nicht erreicht werden: ${error.message}` : "Update-API konnte nicht erreicht werden."

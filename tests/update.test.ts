@@ -72,4 +72,23 @@ describe("triggerContainerUpdate", () => {
       message: "Update-API konnte nicht erreicht werden: getaddrinfo ENOTFOUND watchtower"
     });
   });
+
+  it("explains when the Watchtower API takes longer than the update timeout", async () => {
+    vi.stubEnv("UPDATE_API_URL", "http://watchtower:8080/v1/update");
+    vi.stubEnv("WATCHTOWER_HTTP_API_TOKEN", "secret");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new DOMException("This operation was aborted", "AbortError");
+      })
+    );
+
+    const { triggerContainerUpdate } = await import("@/server/update");
+    const result = await triggerContainerUpdate();
+
+    expect(result).toEqual({
+      ok: false,
+      message: "Update-API hat nicht rechtzeitig geantwortet. Watchtower laeuft eventuell noch; bitte in ein paar Minuten neu laden."
+    });
+  });
 });
