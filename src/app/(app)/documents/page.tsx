@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Download, Eye, Heart, Search, SlidersHorizontal } from "lucide-react";
+import { Download, Eye, FileText, Heart, Search, SlidersHorizontal } from "lucide-react";
 import { StatusPill } from "@/components/status-pill";
 import { formatBytes, statusLabel } from "@/lib/utils";
 import { requireUser } from "@/server/auth";
@@ -95,70 +95,40 @@ export default async function DocumentsPage({
           <p className="mt-2 text-sm text-muted-foreground">Admins können unter Uploads neue Dokumente hinzufügen.</p>
         </section>
       ) : (
-        <>
-        <div className="hidden overflow-hidden rounded-lg border border-border bg-white md:block">
-          <table className="w-full min-w-[760px] border-collapse text-sm">
-            <thead className="bg-muted text-left text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3">Titel</th>
-                <th className="px-4 py-3">Jahr</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Größe</th>
-                <th className="px-4 py-3 text-right">Aktionen</th>
-              </tr>
-            </thead>
-            <tbody>
-              {documents.map((document) => (
-                <tr key={document.id} className="border-t border-border">
-                  <td className="max-w-[360px] px-4 py-3 font-medium">
-                    <div className="flex items-center gap-2">
-                      {document.favorites.length > 0 ? <Heart size={15} className="fill-red-500 text-red-500" /> : null}
-                      <span className="truncate">{document.title}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">{document.year}</td>
-                  <td className="px-4 py-3"><StatusPill status={document.indexStatus} /></td>
-                  <td className="px-4 py-3 text-muted-foreground">{formatBytes(document.size)}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-2">
-                      <Link title="Ansehen" href={`/documents/${document.id}`} className="inline-flex size-9 items-center justify-center rounded-md border border-border hover:bg-muted">
-                        <Eye size={17} />
-                      </Link>
-                      <a title="Herunterladen" href={`/api/documents/${document.id}/download`} className="inline-flex size-9 items-center justify-center rounded-md border border-border hover:bg-muted">
-                        <Download size={17} />
-                      </a>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="grid gap-3 md:hidden">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {documents.map((document) => (
-            <article key={document.id} className="rounded-lg border border-border bg-white p-4">
+            <article key={document.id} className="group flex min-h-[210px] flex-col rounded-lg border border-border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-md">
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="truncate font-semibold">{document.title}</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">{document.year} · {formatBytes(document.size)}</p>
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="flex size-11 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                    <FileText size={22} />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="line-clamp-2 break-words text-sm font-semibold leading-5">{document.title}</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">{document.year} · {formatBytes(document.size)}</p>
+                  </div>
                 </div>
                 {document.favorites.length > 0 ? <Heart size={18} className="shrink-0 fill-red-500 text-red-500" /> : null}
               </div>
-              <div className="mt-3 flex items-center justify-between gap-3">
+
+              <div className="mt-5 flex items-center justify-between gap-3">
                 <StatusPill status={document.indexStatus} />
-                <div className="flex gap-2">
-                  <Link title="Ansehen" href={`/documents/${document.id}`} className="inline-flex size-9 items-center justify-center rounded-md border border-border hover:bg-muted">
-                    <Eye size={17} />
-                  </Link>
-                  <a title="Herunterladen" href={`/api/documents/${document.id}/download`} className="inline-flex size-9 items-center justify-center rounded-md border border-border hover:bg-muted">
-                    <Download size={17} />
-                  </a>
-                </div>
+                <span className="text-xs font-medium uppercase text-muted-foreground">PDF</span>
+              </div>
+
+              <div className="mt-auto grid grid-cols-2 gap-2 pt-5">
+                <Link title="Ansehen" href={`/documents/${document.id}`} className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border text-sm font-medium transition hover:bg-muted">
+                  <Eye size={17} />
+                  Ansehen
+                </Link>
+                <a title="Herunterladen" href={`/api/documents/${document.id}/download`} className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border text-sm font-medium transition hover:bg-muted">
+                  <Download size={17} />
+                  Download
+                </a>
               </div>
             </article>
           ))}
         </div>
-        </>
       )}
     </div>
   );
