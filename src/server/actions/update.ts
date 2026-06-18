@@ -4,8 +4,14 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/server/auth";
 import { triggerContainerUpdate } from "@/server/update";
 
-export async function triggerUpdateAction() {
+export type UpdateActionState = {
+  ok?: boolean;
+  message?: string;
+};
+
+export async function triggerUpdateAction(_state?: UpdateActionState): Promise<UpdateActionState> {
   await requireAdmin();
-  await triggerContainerUpdate();
+  const result = await triggerContainerUpdate();
   revalidatePath("/admin/system");
+  return result;
 }

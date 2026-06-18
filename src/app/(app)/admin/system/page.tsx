@@ -1,7 +1,7 @@
-import { RefreshCw, Rocket, ShieldCheck } from "lucide-react";
+import { Rocket, ShieldCheck } from "lucide-react";
+import { UpdateProgressForm } from "@/components/update-progress-form";
 import { requireAdmin } from "@/server/auth";
 import { getUpdateStatus } from "@/server/update";
-import { triggerUpdateAction } from "@/server/actions/update";
 
 function shortSha(sha: string | null) {
   return sha ? sha.slice(0, 7) : "unbekannt";
@@ -45,15 +45,7 @@ export default async function SystemPage() {
             ) : null}
           </div>
 
-          <form action={triggerUpdateAction}>
-            <button
-              disabled={!status.updateAvailable}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
-            >
-              <RefreshCw size={18} />
-              Aktualisieren
-            </button>
-          </form>
+          <UpdateProgressForm updateAvailable={status.updateAvailable} />
         </div>
       </section>
 
