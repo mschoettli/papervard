@@ -23,6 +23,7 @@ services:
     environment:
       DATABASE_URL: postgresql://papervard:papervard@db:5432/papervard?schema=public
       AUTH_SECRET: change-me-to-a-long-random-secret
+      AUTH_COOKIE_SECURE: "false"
       PDF_STORAGE_PATH: /app/storage/pdfs
       EMBEDDING_MODEL_PATH: /app/models/multilingual-local
       OCR_LANGUAGES: deu+eng+fra+ita+spa

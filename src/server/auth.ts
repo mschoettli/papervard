@@ -23,6 +23,10 @@ function authSecret() {
   return secret;
 }
 
+function secureCookiesEnabled() {
+  return process.env.AUTH_COOKIE_SECURE === "true";
+}
+
 function sign(value: string) {
   return createHmac("sha256", authSecret()).update(value).digest("base64url");
 }
@@ -68,7 +72,7 @@ export async function login(email: string, password: string) {
   cookieStore.set(cookieName, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: secureCookiesEnabled(),
     path: "/",
     maxAge: 60 * 60 * 12
   });

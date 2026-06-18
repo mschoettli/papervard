@@ -43,6 +43,8 @@ docker compose run --rm app npm run db:seed
 
 By default Compose uses `ghcr.io/mschoettli/papervard:latest`. Override it with `PAPERVARD_IMAGE` if you publish a different tag.
 
+Set `AUTH_COOKIE_SECURE=true` only when the app is served over HTTPS. Keep it `false` for plain HTTP Docker or local reverse-proxy setups.
+
 ## Notes
 
 The semantic search adapter is fully local and intentionally replaceable. For production-grade semantic quality, plug a multilingual local embedding model into `src/server/search/embeddings.ts` while keeping the same `vector(384)` storage contract or migrate the vector dimension.
