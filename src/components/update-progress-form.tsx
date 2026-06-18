@@ -6,6 +6,12 @@ import { triggerUpdateAction, type UpdateActionState } from "@/server/actions/up
 
 const initialState: UpdateActionState = {};
 
+function reloadFreshApp() {
+  const url = new URL(window.location.href);
+  url.searchParams.set("updated", Date.now().toString());
+  window.location.assign(url.toString());
+}
+
 export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boolean }) {
   const [state, action, pending] = useActionState(triggerUpdateAction, initialState);
   const [progress, setProgress] = useState(0);
@@ -54,7 +60,7 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
           {complete ? (
             <button
               type="button"
-              onClick={() => window.location.reload()}
+              onClick={reloadFreshApp}
               className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted"
             >
               <CheckCircle2 size={16} />
