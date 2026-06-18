@@ -1,15 +1,18 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Loader2, RefreshCw, RotateCw, XCircle } from "lucide-react";
 import { Button } from "@/components/button";
-import { triggerUpdateAction, type UpdateActionState } from "@/server/actions/update";
 
-const initialState: UpdateActionState = {};
 const reloadPollIntervalMs = 1200;
 const reloadMaxAttempts = 25;
 const updateStatusPollIntervalMs = 2500;
 const updateStatusMaxAttempts = 120;
+
+type UpdateActionState = {
+  ok?: boolean;
+  message?: string;
+};
 
 type UpdateStatusResponse = {
   currentSha: string | null;
@@ -47,7 +50,8 @@ function progressForElapsed(elapsedMs: number) {
 }
 
 export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boolean }) {
-  const [state, action, pending] = useActionState(triggerUpdateAction, initialState);
+  const [state, setState] = useState<UpdateActionState>({});
+  const [pending, setPending] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [verified, setVerified] = useState(false);
@@ -74,6 +78,44 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
 
     return () => window.clearInterval(timer);
   }, [pending]);
+
+  async function startUpdate() {
+    if (!canTriggerUpdate || pending || checkingStatus || succeeded) return;
+
+    setPending(true);
+    setState({});
+    setElapsedMs(0);
+    setVerified(false);
+    setStatusError(null);
+    setReloadError(null);
+
+    try {
+      const response = await fetch("/api/update/start", {
+        method: "POST",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: {
+          "Cache-Control": "no-cache"
+        }
+      });
+      const result = (await response.json().catch(() => ({
+        ok: false,
+        message: `Update konnte nicht gestartet werden. Server antwortet mit ${response.status}.`
+      }))) as UpdateActionState;
+
+      setState({
+        ok: Boolean(result.ok),
+        message: result.message ?? (response.ok ? "Update wurde gestartet." : "Update konnte nicht gestartet werden.")
+      });
+    } catch (error) {
+      setState({
+        ok: false,
+        message: error instanceof Error ? `Update konnte nicht gestartet werden: ${error.message}` : "Update konnte nicht gestartet werden."
+      });
+    } finally {
+      setPending(false);
+    }
+  }
 
   useEffect(() => {
     if (!updateStarted || verified) return;
@@ -196,12 +238,10 @@ export function UpdateProgressForm({ canTriggerUpdate }: { canTriggerUpdate: boo
 
   return (
     <div className="w-full max-w-sm space-y-4 sm:text-right">
-      <form action={action}>
-        <Button type="submit" disabled={!canTriggerUpdate || pending || checkingStatus || succeeded} className="w-full sm:w-auto">
-          {pending ? <Loader2 size={18} className="animate-spin" /> : succeeded ? <CheckCircle2 size={18} /> : <RefreshCw size={18} />}
-          {pending ? "Update startet" : checkingStatus ? "Pruefe Version" : succeeded ? "Update fertig" : canTriggerUpdate ? "Update starten" : "Kein Update"}
-        </Button>
-      </form>
+      <Button type="button" onClick={startUpdate} disabled={!canTriggerUpdate || pending || checkingStatus || succeeded} className="w-full sm:w-auto">
+        {pending ? <Loader2 size={18} className="animate-spin" /> : succeeded ? <CheckCircle2 size={18} /> : <RefreshCw size={18} />}
+        {pending ? "Update startet" : checkingStatus ? "Pruefe Version" : succeeded ? "Update fertig" : canTriggerUpdate ? "Update starten" : "Kein Update"}
+      </Button>
 
       {active ? (
         <div className="space-y-3 text-left" aria-live="polite">
