@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import type React from "react";
-import { Archive, FileSearch, LogOut, Upload, Users } from "lucide-react";
+import { Archive, FileSearch, LogOut, Settings, Upload, Users } from "lucide-react";
 import { logoutAction } from "@/server/actions/auth";
 
 export function AppNav({ role }: { role: "admin" | "user" }) {
@@ -29,6 +29,7 @@ export function AppNav({ role }: { role: "admin" | "user" }) {
             <NavItem href="/admin/uploads" icon={<Upload size={18} />} label="Uploads" />
             <NavItem href="/admin/documents" icon={<Archive size={18} />} label="Verwaltung" />
             <NavItem href="/admin/users" icon={<Users size={18} />} label="Benutzer" />
+            <NavItem href="/admin/system" icon={<Settings size={18} />} label="System" />
           </>
         ) : null}
       </nav>

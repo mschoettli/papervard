@@ -45,6 +45,8 @@ By default Compose uses `ghcr.io/mschoettli/papervard:latest`. Override it with 
 
 Set `AUTH_COOKIE_SECURE=true` only when the app is served over HTTPS. Keep it `false` for plain HTTP Docker or local reverse-proxy setups.
 
+Admins can open `System` in the app to check for a newer GitHub image and trigger an update. The update button uses the bundled Watchtower service, so keep `WATCHTOWER_HTTP_API_TOKEN` identical for `app` and `watchtower`.
+
 ## Notes
 
 The semantic search adapter is fully local and intentionally replaceable. For production-grade semantic quality, plug a multilingual local embedding model into `src/server/search/embeddings.ts` while keeping the same `vector(384)` storage contract or migrate the vector dimension.

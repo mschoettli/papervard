@@ -24,6 +24,10 @@ services:
       DATABASE_URL: postgresql://papervard:papervard@db:5432/papervard?schema=public
       AUTH_SECRET: change-me-to-a-long-random-secret
       AUTH_COOKIE_SECURE: "false"
+      GITHUB_REPOSITORY: mschoettli/papervard
+      GITHUB_BRANCH: main
+      UPDATE_API_URL: http://watchtower:8080/v1/update
+      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:-change-me-update-token}
       PDF_STORAGE_PATH: /app/storage/pdfs
       EMBEDDING_MODEL_PATH: /app/models/multilingual-local
       OCR_LANGUAGES: deu+eng+fra+ita+spa
@@ -33,7 +37,17 @@ services:
       - "3000:3000"
     volumes:
       - pdf_storage:/app/storage/pdfs
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
     command: sh -c "./node_modules/.bin/prisma migrate deploy && npm run db:seed && node server.js"
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    environment:
+      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:-change-me-update-token}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --http-api-update --label-enable --cleanup --rolling-restart
 
 volumes:
   postgres_data:
