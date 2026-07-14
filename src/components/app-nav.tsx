@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import type React from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Archive, Home, LogOut, Settings, Upload, Users } from "lucide-react";
 import { logoutAction } from "@/server/actions/auth";
@@ -14,7 +15,28 @@ type AppUser = {
   role: "admin" | "user";
 };
 
-export function AppNav({ user }: { user: AppUser }) {
+export function AppNav({ user, updateAvailable = false }: { user: AppUser; updateAvailable?: boolean }) {
+  const [showUpdateBadge, setShowUpdateBadge] = useState(updateAvailable);
+
+  useEffect(() => {
+    if (user.role !== "admin") return;
+
+    const controller = new AbortController();
+    fetch("/api/update/status", {
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { "Cache-Control": "no-cache" },
+      signal: controller.signal
+    })
+      .then((response) => response.ok ? response.json() : null)
+      .then((status: { updateAvailable?: boolean } | null) => {
+        if (status) setShowUpdateBadge(Boolean(status.updateAvailable));
+      })
+      .catch(() => undefined);
+
+    return () => controller.abort();
+  }, [user.role]);
+
   return (
     <aside className="border-b border-border bg-white/95 lg:flex lg:min-h-screen lg:w-72 lg:flex-col lg:border-b-0 lg:border-r">
       <div className="flex h-16 items-center border-b border-border px-5">
@@ -42,7 +64,12 @@ export function AppNav({ user }: { user: AppUser }) {
             <NavItem href="/admin/uploads" icon={<Upload size={18} />} label="Uploads" />
             <NavItem href="/admin/documents" icon={<Archive size={18} />} label="Verwaltung" />
             <NavItem href="/admin/users" icon={<Users size={18} />} label="Benutzer" />
-            <NavItem href="/admin/system" icon={<Settings size={18} />} label="System" />
+            <NavItem
+              href="/admin/system"
+              icon={<Settings size={18} />}
+              label="System"
+              badge={showUpdateBadge ? <UpdateBadge /> : null}
+            />
           </div>
         ) : null}
       </nav>
@@ -63,7 +90,7 @@ export function AppNav({ user }: { user: AppUser }) {
   );
 }
 
-function NavItem({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
+function NavItem({ href, icon, label, badge }: { href: string; icon: React.ReactNode; label: string; badge?: React.ReactNode }) {
   const pathname = usePathname();
   const active = href === "/" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 
@@ -78,6 +105,19 @@ function NavItem({ href, icon, label }: { href: string; icon: React.ReactNode; l
     >
       {icon}
       {label}
+      {badge}
     </Link>
+  );
+}
+
+function UpdateBadge() {
+  return (
+    <span
+      aria-label="Update verfügbar"
+      title="Update verfügbar"
+      className="ml-auto rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-semibold leading-none text-white shadow-sm"
+    >
+      Update
+    </span>
   );
 }
