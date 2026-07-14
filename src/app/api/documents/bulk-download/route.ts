@@ -2,17 +2,19 @@ import { readFile } from "node:fs/promises";
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/server/auth";
 import { prisma } from "@/lib/prisma";
+import { documentAccessWhere, householdIdsForUser } from "@/server/documents/access";
 
 export async function GET(request: Request) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const url = new URL(request.url);
   const ids = url.searchParams.getAll("documentId").filter(Boolean);
   if (ids.length === 0) {
     return NextResponse.json({ message: "Keine Dokumente ausgewählt." }, { status: 400 });
   }
 
+  const householdIds = await householdIdsForUser(admin.id);
   const documents = await prisma.document.findMany({
-    where: { id: { in: ids } },
+    where: { AND: [{ id: { in: ids } }, documentAccessWhere(admin.id, householdIds)] },
     orderBy: [{ year: "desc" }, { title: "asc" }]
   });
 
@@ -27,6 +29,7 @@ export async function GET(request: Request) {
   return new NextResponse(archive, {
     headers: {
       "Content-Type": "application/x-tar",
+      "Cache-Control": "private, no-store",
       "Content-Disposition": `attachment; filename="papervard-documents-${Date.now()}.tar"`
     }
   });

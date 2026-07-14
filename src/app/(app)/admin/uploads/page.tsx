@@ -1,25 +1,30 @@
 import Link from "next/link";
-import { AlertTriangle, FileUp, RefreshCw, Upload } from "lucide-react";
+import { AlertTriangle, RefreshCw, Upload } from "lucide-react";
 import { Button } from "@/components/button";
+import { MultiPdfInput } from "@/components/multi-pdf-input";
 import { StatusPill } from "@/components/status-pill";
 import { reindexDocumentAction, uploadPdfAction } from "@/server/actions/documents";
 import { requireAdmin } from "@/server/auth";
 import { formatBytes } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
+import { documentAccessWhere, householdIdsForUser } from "@/server/documents/access";
 
 export default async function UploadsPage() {
-  await requireAdmin();
+  const admin = await requireAdmin();
+  const householdIds = await householdIdsForUser(admin.id);
+  const accessWhere = documentAccessWhere(admin.id, householdIds);
   const [documents, queue, duplicateSource] = await Promise.all([
     prisma.document.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 20
+      where: accessWhere,
+      orderBy: { createdAt: "desc" },
+      take: 20
     }),
     prisma.document.findMany({
-      where: { indexStatus: { in: ["queued", "processing", "failed"] } },
+      where: { AND: [accessWhere, { indexStatus: { in: ["queued", "processing", "failed"] } }] },
       orderBy: { updatedAt: "desc" },
       take: 12
     }),
-    prisma.document.findMany({ select: { originalName: true }, orderBy: { createdAt: "desc" }, take: 200 })
+    prisma.document.findMany({ where: accessWhere, select: { originalName: true }, orderBy: { createdAt: "desc" }, take: 200 })
   ]);
   const duplicateNames = Object.entries(
     duplicateSource.reduce<Record<string, number>>((counts, document) => {
@@ -38,17 +43,19 @@ export default async function UploadsPage() {
         <p className="mt-1 text-sm text-muted-foreground">PDF hochladen, automatisch nach Jahr sortieren und lokal indexieren.</p>
       </header>
 
-      <form action={uploadPdfAction} className="grid gap-4 rounded-lg border border-dashed border-primary/40 bg-white p-5 lg:grid-cols-[1fr_160px_auto] lg:items-end">
-        <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-lg bg-muted/60 px-4 text-center hover:bg-muted lg:min-h-28">
-          <FileUp size={28} className="text-primary" />
-          <span className="mt-3 font-medium">PDF hier auswählen oder ablegen</span>
-          <span className="mt-1 text-sm text-muted-foreground">Duplikate werden anhand der Prüfsumme erkannt.</span>
-          <input name="file" type="file" accept="application/pdf" required className="mt-4 w-full max-w-sm rounded-md border border-border bg-white px-3 py-2 text-sm" />
-        </label>
+      <form action={uploadPdfAction} className="grid gap-4 rounded-lg border border-dashed border-primary/40 bg-white p-5 lg:grid-cols-[1fr_160px_220px_auto] lg:items-end">
+        <MultiPdfInput id="admin-pdf-files" />
         <label className="text-sm font-medium">
-          Jahr optional
+          Jahr für alle optional
           <input name="year" type="number" min="1900" max="2100" placeholder="Automatisch" className="mt-1 h-10 w-full rounded-md border border-border px-3 text-sm" />
         </label>
+        <fieldset>
+          <legend className="text-sm font-medium">Zugriff</legend>
+          <div className="mt-2 flex gap-4 text-sm">
+            <label className="flex items-center gap-2"><input type="radio" name="visibility" value="private" defaultChecked /> Nur ich</label>
+            <label className="flex items-center gap-2"><input type="radio" name="visibility" value="family" /> Familie</label>
+          </div>
+        </fieldset>
         <Button>
           <Upload size={18} />
           Hochladen

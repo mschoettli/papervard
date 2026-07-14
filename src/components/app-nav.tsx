@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import type React from "react";
 import { usePathname } from "next/navigation";
-import { Archive, FileSearch, Home, LogOut, Settings, Upload, Users } from "lucide-react";
+import { Archive, Home, LogOut, Settings, Upload, Users } from "lucide-react";
 import { logoutAction } from "@/server/actions/auth";
 import { cn } from "@/lib/utils";
 
@@ -31,11 +31,10 @@ export function AppNav({ user }: { user: AppUser }) {
           Papervard
         </Link>
       </div>
-      <nav className="flex gap-1 overflow-x-auto p-3 lg:block lg:space-y-6">
+      <nav aria-label="Hauptnavigation" className="flex gap-1 overflow-x-auto p-3 lg:block lg:space-y-6">
         <div className="flex gap-1 lg:block lg:space-y-1">
           <NavItem href="/" icon={<Home size={18} />} label="Dashboard" />
           <NavItem href="/documents" icon={<Archive size={18} />} label="Dokumente" />
-          <NavItem href="/search" icon={<FileSearch size={18} />} label="Suche" />
         </div>
         {user.role === "admin" ? (
           <div className="flex gap-1 lg:block lg:space-y-1">
@@ -71,6 +70,7 @@ function NavItem({ href, icon, label }: { href: string; icon: React.ReactNode; l
   return (
     <Link
       href={href}
+      aria-current={active ? "page" : undefined}
       className={cn(
         "flex h-10 shrink-0 items-center gap-2 rounded-md px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
         active && "bg-primary/10 font-medium text-primary"

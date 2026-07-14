@@ -7,7 +7,16 @@ vi.mock("@/server/auth", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     document: {
-      findUnique: vi.fn(async () => ({ id: "doc-1", storagePath: "/tmp/doc-1.pdf" }))
+      findUnique: vi.fn(async () => ({
+        id: "doc-1",
+        storagePath: "/tmp/doc-1.pdf",
+        ownerUserId: "user-1",
+        householdId: "family-1",
+        visibility: "private"
+      }))
+    },
+    householdMember: {
+      findFirst: vi.fn(async () => null)
     }
   }
 }));

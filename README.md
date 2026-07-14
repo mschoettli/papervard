@@ -1,6 +1,6 @@
 # Papervard
 
-Papervard is a Docker-ready PDF library with login, admin-managed users, PDF upload, year-based browsing, in-browser viewing, downloads, and local hybrid search.
+Papervard is a Docker-ready family PDF library with private documents, optional family access, in-browser viewing, downloads, and local search across titles, filenames and PDF text.
 
 ## Stack
 
@@ -12,7 +12,7 @@ Papervard is a Docker-ready PDF library with login, admin-managed users, PDF upl
 
 ## Local Setup
 
-1. Copy `.env.example` to `.env` and adjust `AUTH_SECRET`.
+1. Copy `.env.example` to `.env` and replace every `replace-with-...` value. Generate random hex secrets with `openssl rand -hex 32`.
 2. Install dependencies with `npm install`.
 3. Start Postgres with `docker compose up db`.
 4. Run migrations with `npm run prisma:migrate`.
@@ -21,10 +21,19 @@ Papervard is a Docker-ready PDF library with login, admin-managed users, PDF upl
 
 For local OCR outside Docker, install `poppler-utils` and Tesseract with the language packs for German, English, French, Italian, and Spanish.
 
-Seeded admin:
+The initial admin is configured through `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` in `.env`. Change the password after first use and never deploy the example values.
 
-- Email: `admin@papervard.local`
-- Password: `Papervard-Admin-123!`
+## Documents, search and family access
+
+- `Nur ich` is the default for every new upload. Only the owner can list, search, preview or download it.
+- `Familie` makes the document available to all members of the same family.
+- Family and application admins cannot read another person's private documents.
+- The Documents page searches document titles, original filenames and extracted PDF/OCR text.
+- Entering a four-digit year such as `2024` shows documents assigned to that year. The year filter can be used together with a text search.
+- Several PDFs can be selected or dragged into the file input at once. Each PDF may be up to 50 MB and a submission up to 75 MB.
+- A manually selected year remains fixed during later re-indexing.
+
+Existing documents become family-visible when migration `000003_family_document_access` is deployed. New users automatically join the default family. The decision and security boundaries are recorded in [`docs/decisions/001-family-document-access.md`](docs/decisions/001-family-document-access.md).
 
 ## Docker
 
@@ -45,7 +54,14 @@ By default Compose uses `ghcr.io/mschoettli/papervard:latest`. Override it with 
 
 Set `AUTH_COOKIE_SECURE=true` only when the app is served over HTTPS. Keep it `false` for plain HTTP Docker or local reverse-proxy setups.
 
-Admins can open `System` in the app to check for a newer GitHub image and trigger an update. The update button uses the bundled Watchtower service, so keep `WATCHTOWER_HTTP_API_TOKEN` identical for `app` and `watchtower`.
+Admins can open `System` in the app to check for a newer GitHub image and trigger an update. The update button uses the bundled Watchtower HTTP API:
+
+1. Generate one token with `openssl rand -hex 32` and set it as `WATCHTOWER_HTTP_API_TOKEN` in `.env`.
+2. Compose passes the same token to the app and Watchtower; do not expose Watchtower port 8080 publicly.
+3. `UPDATE_API_URL` stays `http://watchtower:8080/v1/update` inside the Compose network.
+4. The label `com.centurylinklabs.watchtower.enable=true` limits updates to opted-in containers.
+
+The Docker socket gives Watchtower control over Docker. Run the stack only on a trusted host and restrict access to the `.env` file.
 
 ## Notes
 

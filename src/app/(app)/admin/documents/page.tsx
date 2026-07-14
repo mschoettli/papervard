@@ -4,10 +4,13 @@ import { StatusPill } from "@/components/status-pill";
 import { bulkDocumentAction, reindexDocumentAction, updateDocumentAction } from "@/server/actions/documents";
 import { requireAdmin } from "@/server/auth";
 import { prisma } from "@/lib/prisma";
+import { documentAccessWhere, householdIdsForUser } from "@/server/documents/access";
 
 export default async function AdminDocumentsPage() {
-  await requireAdmin();
+  const admin = await requireAdmin();
+  const householdIds = await householdIdsForUser(admin.id);
   const documents = await prisma.document.findMany({
+    where: documentAccessWhere(admin.id, householdIds),
     orderBy: [{ year: "desc" }, { title: "asc" }]
   });
 
@@ -15,7 +18,7 @@ export default async function AdminDocumentsPage() {
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-normal">Dokumentverwaltung</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Titel, Jahr und Indexierung verwalten.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Eigene und für die Familie freigegebene Dokumente verwalten.</p>
       </header>
 
       <form action={bulkDocumentAction} className="rounded-lg border border-border bg-white p-4">

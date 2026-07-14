@@ -1,25 +1,29 @@
 import Link from "next/link";
 import type React from "react";
-import { Archive, Download, Eye, FileSearch, Heart, Upload } from "lucide-react";
+import { Archive, Download, Eye, Heart, Upload } from "lucide-react";
 import { AppNav } from "@/components/app-nav";
 import { DocumentThumbnail } from "@/components/document-thumbnail";
 import { formatBytes } from "@/lib/utils";
 import { toggleFavoriteDocumentAction } from "@/server/actions/documents";
 import { requireUser } from "@/server/auth";
 import { prisma } from "@/lib/prisma";
+import { documentAccessWhere, householdIdsForUser } from "@/server/documents/access";
 
 export default async function HomePage() {
   const user = await requireUser();
+  const householdIds = await householdIdsForUser(user.id);
+  const accessWhere = documentAccessWhere(user.id, householdIds);
   const [totalDocuments, totalSize, recentDocuments, favoriteRecords, favoriteCount] = await Promise.all([
-    prisma.document.count(),
-    prisma.document.aggregate({ _sum: { size: true } }),
+    prisma.document.count({ where: accessWhere }),
+    prisma.document.aggregate({ where: accessWhere, _sum: { size: true } }),
     prisma.document.findMany({
+      where: accessWhere,
       include: { favorites: { where: { userId: user.id }, select: { id: true } } },
       orderBy: { createdAt: "desc" },
       take: 4
     }),
     prisma.favoriteDocument.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, document: accessWhere },
       include: {
         document: {
           include: { favorites: { where: { userId: user.id }, select: { id: true } } }
@@ -28,14 +32,17 @@ export default async function HomePage() {
       orderBy: { createdAt: "desc" },
       take: 4
     }),
-    prisma.favoriteDocument.count({ where: { userId: user.id } })
+    prisma.favoriteDocument.count({ where: { userId: user.id, document: accessWhere } })
   ]);
   const favoriteDocuments = favoriteRecords.map((favorite) => favorite.document);
 
   return (
     <div className="min-h-screen lg:flex">
+      <a href="#main-content" className="sr-only z-50 rounded-md bg-white px-4 py-2 text-sm font-medium shadow focus:not-sr-only focus:fixed focus:left-4 focus:top-4">
+        Zum Inhalt springen
+      </a>
       <AppNav user={user} />
-      <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
+      <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
         <div className="space-y-7">
           <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -44,9 +51,9 @@ export default async function HomePage() {
               <p className="mt-2 text-sm text-muted-foreground">Überblick über Bibliothek, Favoriten und letzte Aktivitäten.</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Link href="/search" className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">
-                <FileSearch size={18} />
-                Suche öffnen
+              <Link href="/documents" className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">
+                <Archive size={18} />
+                Dokumente öffnen
               </Link>
               {user.role === "admin" ? (
                 <Link href="/admin/uploads" className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-white px-4 text-sm font-medium hover:bg-muted">

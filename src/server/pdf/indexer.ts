@@ -8,30 +8,48 @@ import { chunkPages } from "@/server/pdf/chunk";
 import { extractPdfText } from "@/server/pdf/extract";
 import { createDocumentThumbnail } from "@/server/pdf/thumbnail";
 import { detectYear } from "@/server/pdf/year";
+import { hasPdfSignature } from "@/server/pdf/validate";
 import { embedText, vectorLiteral } from "@/server/search/embeddings";
+import { documentAccessWhere, householdIdsForUser } from "@/server/documents/access";
+
+type SaveUploadedPdfOptions = {
+  ownerUserId: string;
+  householdId: string;
+  visibility: "private" | "family";
+  yearOverride?: number;
+};
 
 export function storageRoot() {
   return process.env.PDF_STORAGE_PATH ?? path.join(process.cwd(), "storage", "pdfs");
 }
 
-export async function saveUploadedPdf(file: File, uploaderId?: string, yearOverride?: number) {
+export async function saveUploadedPdf(file: File, options: SaveUploadedPdfOptions) {
   if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
     throw new Error("Nur PDF-Dateien sind erlaubt.");
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
+  if (!hasPdfSignature(buffer)) throw new Error("Die Datei ist keine gültige PDF-Datei.");
   const checksum = createHash("sha256").update(buffer).digest("hex");
-  const existing = await prisma.document.findUnique({ where: { checksum } });
+  const existing = await prisma.document.findUnique({
+    where: {
+      ownerUserId_checksum: {
+        ownerUserId: options.ownerUserId,
+        checksum
+      }
+    }
+  });
   if (existing) return existing;
 
-  await mkdir(storageRoot(), { recursive: true });
+  const ownerStorageRoot = path.join(storageRoot(), options.ownerUserId);
+  await mkdir(ownerStorageRoot, { recursive: true });
   const id = randomUUID();
   const fileName = `${id}.pdf`;
-  const storagePath = path.join(storageRoot(), fileName);
+  const storagePath = path.join(ownerStorageRoot, fileName);
   await writeFile(storagePath, buffer);
 
   const title = file.name.replace(/\.pdf$/i, "").replace(/[_-]+/g, " ").trim();
-  const year = yearOverride ?? detectYear(file.name);
+  const year = options.yearOverride ?? detectYear(file.name);
 
   const document = await prisma.document.create({
     data: {
@@ -43,7 +61,10 @@ export async function saveUploadedPdf(file: File, uploaderId?: string, yearOverr
       size: buffer.byteLength,
       storagePath,
       checksum,
-      uploadedById: uploaderId,
+      ownerUserId: options.ownerUserId,
+      householdId: options.householdId,
+      visibility: options.visibility,
+      yearLocked: options.yearOverride !== undefined,
       indexStatus: "queued"
     }
   });
@@ -71,7 +92,9 @@ export async function indexDocument(documentId: string) {
     await prisma.textChunk.deleteMany({ where: { documentId } });
     const extracted = await extractPdfText(document.storagePath);
     const allText = extracted.pages.map((page) => page.text).join("\n");
-    const detectedYear = detectYear(`${document.originalName}\n${allText}`, document.year);
+    const detectedYear = document.yearLocked
+      ? document.year
+      : detectYear(`${document.originalName}\n${allText}`, document.year);
     const chunks = chunkPages(extracted.pages);
 
     for (const chunk of chunks) {
@@ -114,8 +137,11 @@ export async function indexDocument(documentId: string) {
   }
 }
 
-export async function readDocumentFile(documentId: string) {
-  const document = await prisma.document.findUnique({ where: { id: documentId } });
+export async function readDocumentFile(documentId: string, userId: string) {
+  const householdIds = await householdIdsForUser(userId);
+  const document = await prisma.document.findFirst({
+    where: { id: documentId, ...documentAccessWhere(userId, householdIds) }
+  });
   if (!document) return null;
   const buffer = await readFile(document.storagePath);
   return { document, buffer };

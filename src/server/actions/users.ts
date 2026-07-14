@@ -33,13 +33,24 @@ export async function createUserAction(_: CreateUserState | undefined, formData:
   }
 
   try {
-    await prisma.user.create({
-      data: {
-        email: parsed.data.email.toLowerCase(),
-        name: parsed.data.name,
-        passwordHash: await bcrypt.hash(parsed.data.password, 12),
-        role: parsed.data.role
-      }
+    const passwordHash = await bcrypt.hash(parsed.data.password, 12);
+    await prisma.$transaction(async (transaction) => {
+      const household = await transaction.household.upsert({
+        where: { id: "papervard-family" },
+        update: {},
+        create: { id: "papervard-family", name: "Familie" }
+      });
+      await transaction.user.create({
+        data: {
+          email: parsed.data.email.toLowerCase(),
+          name: parsed.data.name,
+          passwordHash,
+          role: parsed.data.role,
+          householdMemberships: {
+            create: { householdId: household.id, role: "member" }
+          }
+        }
+      });
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

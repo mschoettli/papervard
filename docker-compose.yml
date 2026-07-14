@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_DB: papervard
       POSTGRES_USER: papervard
-      POSTGRES_PASSWORD: papervard
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     ports:
       - "5432:5432"
     volumes:
@@ -21,18 +21,18 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://papervard:papervard@db:5432/papervard?schema=public
-      AUTH_SECRET: change-me-to-a-long-random-secret
+      DATABASE_URL: postgresql://papervard:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/papervard?schema=public
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in .env}
       AUTH_COOKIE_SECURE: "false"
       GITHUB_REPOSITORY: mschoettli/papervard
       GITHUB_BRANCH: main
       UPDATE_API_URL: http://watchtower:8080/v1/update
-      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:-change-me-update-token}
+      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:?Set WATCHTOWER_HTTP_API_TOKEN in .env}
       PDF_STORAGE_PATH: /app/storage/pdfs
       EMBEDDING_MODEL_PATH: /app/models/multilingual-local
       OCR_LANGUAGES: deu+eng+fra+ita+spa
-      SEED_ADMIN_EMAIL: admin@papervard.local
-      SEED_ADMIN_PASSWORD: Papervard-Admin-123!
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@papervard.local}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?Set SEED_ADMIN_PASSWORD in .env}
     ports:
       - "3000:3000"
     volumes:
@@ -44,7 +44,7 @@ services:
   watchtower:
     image: containrrr/watchtower:latest
     environment:
-      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:-change-me-update-token}
+      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:?Set WATCHTOWER_HTTP_API_TOKEN in .env}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     command: --http-api-update --label-enable --cleanup --rolling-restart

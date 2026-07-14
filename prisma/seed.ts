@@ -8,17 +8,18 @@ async function main() {
   const existing = await prisma.user.findUnique({ where: { email } });
 
   if (existing && !resetPassword) {
-    await prisma.user.update({
+    const admin = await prisma.user.update({
       where: { email },
       data: { role: "admin", active: true }
     });
+    await ensureFamilyMembership(admin.id);
     console.log(`Admin user already exists: ${email}`);
     return;
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
 
-  await prisma.user.upsert({
+  const admin = await prisma.user.upsert({
     where: { email },
     update: { passwordHash, role: "admin", active: true },
     create: {
@@ -29,8 +30,22 @@ async function main() {
       active: true
     }
   });
+  await ensureFamilyMembership(admin.id);
 
-  console.log(`Seeded admin user: ${email} / ${password}`);
+  console.log(`Seeded admin user: ${email}`);
+}
+
+async function ensureFamilyMembership(userId: string) {
+  const household = await prisma.household.upsert({
+    where: { id: "papervard-family" },
+    update: {},
+    create: { id: "papervard-family", name: "Familie" }
+  });
+  await prisma.householdMember.upsert({
+    where: { householdId_userId: { householdId: household.id, userId } },
+    update: { role: "owner" },
+    create: { householdId: household.id, userId, role: "owner" }
+  });
 }
 
 main()

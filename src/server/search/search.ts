@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { embedText, vectorLiteral } from "@/server/search/embeddings";
 import { combineRank, makeExcerpt } from "@/server/search/ranking";
+import { householdIdsForUser, type DocumentScope } from "@/server/documents/access";
 
 type RawSearchRow = {
   chunk_id: string;
@@ -13,76 +14,98 @@ type RawSearchRow = {
   content: string;
   keyword_rank: number | null;
   semantic_rank: number | null;
+  total: bigint | number;
 };
-
-export type SearchMode = "hybrid" | "keyword" | "semantic";
 
 export type SearchFilters = {
   year?: number;
-  yearFrom?: number;
-  yearTo?: number;
-  title?: string;
-  status?: "queued" | "processing" | "indexed" | "failed";
-  mode?: SearchMode;
+  scope?: DocumentScope;
+  documentId?: string;
+  limit?: number;
+  offset?: number;
 };
 
-export async function hybridSearch(query: string, filters: number | SearchFilters = {}) {
+export async function hybridSearch(userId: string, query: string, filters: SearchFilters = {}) {
   const cleanQuery = query.trim();
-  if (cleanQuery.length < 2) return [];
+  if (cleanQuery.length < 2) return { results: [], total: 0 };
 
-  const normalizedFilters = typeof filters === "number" ? { year: filters } : filters;
+  const householdIds = await householdIdsForUser(userId);
   const embedding = vectorLiteral(embedText(cleanQuery));
-  const yearFilter = normalizedFilters.year && Number.isInteger(normalizedFilters.year) ? normalizedFilters.year : null;
-  const yearFrom = normalizedFilters.yearFrom && Number.isInteger(normalizedFilters.yearFrom) ? normalizedFilters.yearFrom : null;
-  const yearTo = normalizedFilters.yearTo && Number.isInteger(normalizedFilters.yearTo) ? normalizedFilters.yearTo : null;
-  const titleFilter = normalizedFilters.title?.trim() ? `%${normalizedFilters.title.trim()}%` : null;
-  const statusFilter = normalizedFilters.status ?? "indexed";
-  const mode = normalizedFilters.mode ?? "hybrid";
-  const allowKeyword = mode === "hybrid" || mode === "keyword";
-  const allowSemantic = mode === "hybrid" || mode === "semantic";
+  const year = filters.year && Number.isInteger(filters.year) ? filters.year : null;
+  const scope = filters.scope ?? "all";
+  const documentId = filters.documentId ?? null;
+  const limit = Math.min(Math.max(filters.limit ?? 24, 1), 50);
+  const offset = Math.max(filters.offset ?? 0, 0);
 
   const rows = await prisma.$queryRawUnsafe<RawSearchRow[]>(`
     WITH q AS (
       SELECT
-        plainto_tsquery('simple', $1) AS tsq,
+        websearch_to_tsquery('simple', $1) AS tsq,
         $2::vector AS embedding
     ),
     ranked AS (
       SELECT
-        c.id AS chunk_id,
+        COALESCE(c.id, d.id) AS chunk_id,
         d.id AS document_id,
         d.title,
         d.year,
-        c.page,
-        c.content,
-        ts_rank_cd(c.tsv, q.tsq) AS keyword_rank,
-        1 - (c.embedding <=> q.embedding) AS semantic_rank
-      FROM "TextChunk" c
-      JOIN "Document" d ON d.id = c."documentId"
+        COALESCE(c.page, 1) AS page,
+        COALESCE(c.content, '') AS content,
+        ts_rank_cd(
+          setweight(to_tsvector('simple', COALESCE(d.title, '') || ' ' || COALESCE(d."originalName", '')), 'A')
+          || COALESCE(c.tsv, ''::tsvector),
+          q.tsq
+        ) AS keyword_rank,
+        COALESCE(1 - (c.embedding <=> q.embedding), 0) AS semantic_rank
+      FROM "Document" d
+      LEFT JOIN "TextChunk" c ON d.id = c."documentId"
       CROSS JOIN q
-      WHERE d."indexStatus" = $4::"IndexStatus"
+      WHERE d."indexStatus" = 'indexed'::"IndexStatus"
         AND ($3::int IS NULL OR d.year = $3::int)
-        AND ($5::int IS NULL OR d.year >= $5::int)
-        AND ($6::int IS NULL OR d.year <= $6::int)
-        AND ($7::text IS NULL OR d.title ILIKE $7::text)
+        AND ($7::text IS NULL OR d.id = $7::text)
         AND (
-          ($8::boolean AND c.tsv @@ q.tsq)
-          OR ($9::boolean AND (1 - (c.embedding <=> q.embedding)) > 0.14)
+          d."ownerUserId" = $4::text
+          OR (d."visibility" = 'family'::"DocumentVisibility" AND d."householdId" = ANY($5::text[]))
         )
+        AND (
+          $6::text = 'all'
+          OR ($6::text = 'mine' AND d."ownerUserId" = $4::text)
+          OR ($6::text = 'family' AND d."visibility" = 'family'::"DocumentVisibility" AND d."householdId" = ANY($5::text[]))
+          OR ($6::text = 'favorites' AND EXISTS (
+            SELECT 1 FROM "FavoriteDocument" favorite
+            WHERE favorite."documentId" = d.id AND favorite."userId" = $4::text
+          ))
+        )
+        AND (
+          (setweight(to_tsvector('simple', COALESCE(d.title, '') || ' ' || COALESCE(d."originalName", '')), 'A')
+            || COALESCE(c.tsv, ''::tsvector)) @@ q.tsq
+          OR (c.embedding IS NOT NULL AND (1 - (c.embedding <=> q.embedding)) > 0.14)
+        )
+    ),
+    best_per_document AS (
+      SELECT *, ROW_NUMBER() OVER (
+        PARTITION BY document_id
+        ORDER BY ((COALESCE(keyword_rank, 0) * 0.62) + (COALESCE(semantic_rank, 0) * 0.38)) DESC
+      ) AS result_number
+      FROM ranked
     )
-    SELECT *
-    FROM ranked
+    SELECT *, COUNT(*) OVER() AS total
+    FROM best_per_document
+    WHERE result_number = 1
     ORDER BY ((COALESCE(keyword_rank, 0) * 0.62) + (COALESCE(semantic_rank, 0) * 0.38)) DESC
-    LIMIT 50
-  `, cleanQuery, embedding, yearFilter, statusFilter, yearFrom, yearTo, titleFilter, allowKeyword, allowSemantic);
+    LIMIT $8::int OFFSET $9::int
+  `, cleanQuery, embedding, year, userId, householdIds, scope, documentId, limit, offset);
 
-  return rows.map((row) => ({
-    chunkId: row.chunk_id,
-    documentId: row.document_id,
-    title: row.title,
-    year: row.year,
-    page: row.page,
-    excerpt: makeExcerpt(row.content, cleanQuery),
-    score: combineRank(row.keyword_rank ?? 0, row.semantic_rank ?? 0)
-  }));
+  return {
+    results: rows.map((row) => ({
+      chunkId: row.chunk_id,
+      documentId: row.document_id,
+      title: row.title,
+      year: row.year,
+      page: row.page,
+      excerpt: makeExcerpt(row.content, cleanQuery),
+      score: combineRank(row.keyword_rank ?? 0, row.semantic_rank ?? 0)
+    })),
+    total: rows.length > 0 ? Number(rows[0].total) : 0
+  };
 }
