@@ -18,20 +18,18 @@ import {
   SlidersHorizontal,
   Tags,
   Trash2,
-  Upload,
   Users
 } from "lucide-react";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { DocumentThumbnail } from "@/components/document-thumbnail";
 import { DraggableLibraryItem, FolderDropTarget } from "@/components/library-drag-drop";
-import { MultiPdfInput } from "@/components/multi-pdf-input";
+import { ResumableUpload } from "@/components/resumable-upload";
 import { formatBytes } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
 import {
   moveDocumentAction,
   toggleFavoriteDocumentAction,
-  trashDocumentAction,
-  uploadPdfAction
+  trashDocumentAction
 } from "@/server/actions/documents";
 import {
   createFolderAction,
@@ -46,14 +44,31 @@ import {
   restoreTrashItemAction,
   trashFolderAction,
   updateDocumentTagsAction,
+  updateFolderTagsAction,
   updateTagAction
 } from "@/server/actions/library";
 import { requireUser } from "@/server/auth";
 import { documentScopeWhere, householdIdsForUser, type DocumentScope } from "@/server/documents/access";
 import { collectDescendantFolderIds, folderAccessWhere, trashExpiresAt } from "@/server/documents/folders";
+import { supportedUploadExtensions } from "@/server/documents/formats";
 import { hybridSearch } from "@/server/search/search";
 
 const PAGE_SIZE = 24;
+
+type DocumentCard = {
+  id: string;
+  title: string;
+  year: number;
+  size: bigint;
+  visibility: "private" | "family";
+  folderId: string;
+  folder: { id: string; name: string };
+  favorites: Array<{ id: string }>;
+  tags: Array<{ tagId: string; tag: { id: string; name: string; color: string } }>;
+};
+
+type TrashedDocument = { id: string; title: string; deletedAt: Date | null };
+type TrashedFolder = { id: string; name: string; deletedAt: Date | null };
 
 type DocumentsSearchParams = {
   q?: string;
@@ -83,21 +98,25 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
   const page = Math.max(1, Number(params.page) || 1);
   const selectedTagIds = [...new Set((params.tags ?? "").split(",").filter(Boolean))];
   const householdIds = await householdIdsForUser(user.id);
-  const scopeWhere = documentScopeWhere(user.id, householdIds, scope);
+  const isAdmin = user.role === "admin";
+  const scopeWhere = documentScopeWhere(user.id, householdIds, scope, isAdmin);
   const offset = (page - 1) * PAGE_SIZE;
 
   await purgeExpiredTrash();
 
   const [years, folders, tags] = await Promise.all([
     prisma.document.findMany({
-      where: documentScopeWhere(user.id, householdIds, "all"),
+      where: documentScopeWhere(user.id, householdIds, "all", isAdmin),
       select: { year: true },
       distinct: ["year"],
       orderBy: { year: "desc" }
     }),
     prisma.folder.findMany({
-      where: folderAccessWhere(user.id, householdIds),
-      include: { _count: { select: { documents: { where: { deletedAt: null } } } } },
+      where: folderAccessWhere(user.id, householdIds, isAdmin),
+      include: {
+        _count: { select: { documents: { where: { deletedAt: null } } } },
+        tags: { include: { tag: true } }
+      },
       orderBy: [{ isSystem: "desc" }, { name: "asc" }]
     }),
     prisma.tag.findMany({
@@ -145,6 +164,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
         ]).then(([documents, total]) => ({ documents, total })),
     textQuery && !trashMode
       ? hybridSearch(user.id, textQuery, {
+          isAdmin,
           year: activeYear,
           scope,
           folderIds: folderQuery && currentFolder ? recursiveFolderIds : [],
@@ -157,10 +177,12 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
       ? prisma.document.findMany({
           where: {
             deletedAt: { not: null },
-            OR: [
-              { ownerUserId: user.id },
-              { visibility: "family", householdId: { in: householdIds } }
-            ]
+            ...(isAdmin
+              ? { householdId: { in: householdIds } }
+              : { OR: [
+                  { ownerUserId: user.id },
+                  { visibility: "family", householdId: { in: householdIds } }
+                ] })
           },
           orderBy: { deletedAt: "desc" }
         })
@@ -170,10 +192,12 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
           where: {
             deletedAt: { not: null },
             isSystem: false,
-            OR: [
-              { visibility: "private", createdByUserId: user.id },
-              { visibility: "family", householdId: { in: householdIds } }
-            ]
+            ...(isAdmin
+              ? { householdId: { in: householdIds } }
+              : { OR: [
+                  { visibility: "private", createdByUserId: user.id },
+                  { visibility: "family", householdId: { in: householdIds } }
+                ] })
           },
           orderBy: { deletedAt: "desc" }
         })
@@ -279,6 +303,25 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
 
               {currentFolder ? <FolderSearch folder={currentFolder} query={folderQuery} params={params} /> : null}
 
+              {currentFolder ? (
+                <form action={updateFolderTagsAction} className="rounded-2xl border border-border bg-white p-4">
+                  <input type="hidden" name="folderId" value={currentFolder.id} />
+                  <fieldset>
+                    <legend className="text-sm font-semibold">Tags für Ordner „{currentFolder.name}“</legend>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {tags.map((tag) => (
+                        <label key={tag.id} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-border px-3 text-sm">
+                          <input type="checkbox" name="tagId" value={tag.id} defaultChecked={currentFolder.tags.some((item) => item.tagId === tag.id)} />
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: tag.color }} />
+                          {tag.name}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <button className="mt-3 min-h-11 rounded-md bg-muted px-4 text-sm font-medium">Ordner-Tags speichern</button>
+                </form>
+              ) : null}
+
               <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_360px]">
                 <FilterPanel params={params} query={query} scope={scope} years={years} activeYear={activeYear} sort={sort} tags={tags} selectedTagIds={selectedTagIds} />
                 <UploadPanel folders={folders} />
@@ -307,7 +350,6 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
                 textQuery={textQuery}
                 searchResults={searchResult.results}
                 documents={listResult.documents}
-                userId={user.id}
                 folders={folders}
                 tags={tags}
               />
@@ -425,26 +467,14 @@ function UploadPanel({ folders }: { folders: Array<{ id: string; name: string; p
   return (
     <details className="rounded-2xl bg-[#f5e7c8] shadow-[0_1px_0_rgba(20,40,35,0.06),0_10px_28px_rgba(20,40,35,0.06)]">
       <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-4 text-sm font-semibold text-[#553c13] [&::-webkit-details-marker]:hidden">
-        <FileUp aria-hidden="true" size={18} /> PDFs hinzufügen
+        <FileUp aria-hidden="true" size={18} /> Dateien hinzufügen
       </summary>
-      <form action={uploadPdfAction} className="space-y-4 px-4 pb-4">
-        <MultiPdfInput id="document-pdf-files" />
-        <fieldset>
-          <legend className="text-sm font-medium">Wer darf die Dokumente sehen?</legend>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            <VisibilityOption value="private" label="Nur ich" description="Privater Bereich" defaultChecked />
-            <VisibilityOption value="family" label="Familie" description="Gemeinsam verwalten" />
-          </div>
-        </fieldset>
-        <label className="block text-sm font-medium" htmlFor="upload-folder">Direkt in Ordner speichern (optional)</label>
-        <FolderSelect id="upload-folder" name="folderId" folders={folders} includeUnsortedPlaceholder />
-        <p className="text-xs text-[#6b5429]">Ohne Auswahl wird automatisch der passende feste Ordner „Unsortiert“ verwendet.</p>
-        <label className="block text-sm font-medium" htmlFor="upload-year">Jahr (optional)</label>
-        <input id="upload-year" name="year" type="number" min="1900" max={new Date().getFullYear() + 1} placeholder="Wird automatisch erkannt" className="h-11 w-full rounded-lg border border-[#d5c49e] bg-white px-3" />
-        <button className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#6d4e18] px-4 text-sm font-medium text-white transition-transform active:scale-[0.96]">
-          <Upload aria-hidden="true" size={17} /> Hochladen
-        </button>
-      </form>
+      <div className="px-4 pb-4">
+        <ResumableUpload
+          accept={supportedUploadExtensions().join(",")}
+          folders={folders.map((folder) => ({ id: folder.id, name: folder.name, visibility: folder.visibility }))}
+        />
+      </div>
     </details>
   );
 }
@@ -498,13 +528,12 @@ function FolderCard({ folder, folders, params }: {
   );
 }
 
-function DocumentResults({ total, query, textQuery, searchResults, documents, userId, folders, tags }: {
+function DocumentResults({ total, query, textQuery, searchResults, documents, folders, tags }: {
   total: number;
   query: string;
   textQuery: string;
   searchResults: Array<{ chunkId: string; documentId: string; page: number; title: string; year: number; excerpt: string }>;
-  documents: Array<any>;
-  userId: string;
+  documents: DocumentCard[];
   folders: Array<{ id: string; name: string; parentId: string | null; visibility: "private" | "family" }>;
   tags: Array<{ id: string; name: string; color: string }>;
 }) {
@@ -554,7 +583,7 @@ function DocumentResults({ total, query, textQuery, searchResults, documents, us
               <p className="mt-1 text-sm text-muted-foreground">{document.year} · {formatBytes(document.size)}</p>
               {document.tags.length > 0 ? (
                 <div className="mt-3 flex flex-wrap gap-1.5">
-                  {document.tags.map(({ tag }: any) => <TagChip key={tag.id} tag={tag} />)}
+                  {document.tags.map(({ tag }) => <TagChip key={tag.id} tag={tag} />)}
                 </div>
               ) : null}
             </div>
@@ -573,7 +602,7 @@ function DocumentResults({ total, query, textQuery, searchResults, documents, us
                     <div className="mt-2 max-h-32 space-y-1 overflow-y-auto">
                       {tags.map((tag) => (
                         <label key={tag.id} className="flex min-h-10 items-center gap-2 rounded-lg px-2 text-xs hover:bg-muted">
-                          <input type="checkbox" name="tagId" value={tag.id} defaultChecked={document.tags.some((item: any) => item.tagId === tag.id)} />
+                          <input type="checkbox" name="tagId" value={tag.id} defaultChecked={document.tags.some((item) => item.tagId === tag.id)} />
                           <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: tag.color }} /> {tag.name}
                         </label>
                       ))}
@@ -655,7 +684,7 @@ function TagManager({ tags }: { tags: Array<{ id: string; name: string; color: s
   );
 }
 
-function TrashView({ documents, folders }: { documents: Array<any>; folders: Array<any> }) {
+function TrashView({ documents, folders }: { documents: TrashedDocument[]; folders: TrashedFolder[] }) {
   const empty = documents.length === 0 && folders.length === 0;
   return (
     <section className="space-y-5">
@@ -674,8 +703,8 @@ function TrashView({ documents, folders }: { documents: Array<any>; folders: Arr
         <div className="rounded-2xl border border-dashed border-border bg-white/70 p-10 text-center"><Trash2 size={34} className="mx-auto text-muted-foreground" /><h3 className="mt-3 font-semibold">Der Papierkorb ist leer</h3></div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {folders.map((folder) => <TrashCard key={`folder-${folder.id}`} type="folder" id={folder.id} title={folder.name} deletedAt={folder.deletedAt} />)}
-          {documents.map((document) => <TrashCard key={`document-${document.id}`} type="document" id={document.id} title={document.title} deletedAt={document.deletedAt} />)}
+          {folders.map((folder) => <TrashCard key={`folder-${folder.id}`} type="folder" id={folder.id} title={folder.name} deletedAt={folder.deletedAt!} />)}
+          {documents.map((document) => <TrashCard key={`document-${document.id}`} type="document" id={document.id} title={document.title} deletedAt={document.deletedAt!} />)}
         </div>
       )}
     </section>
@@ -730,15 +759,6 @@ function FolderNavLink({ href, active, label, icon, depth = 0 }: { href: string;
 
 function TagChip({ tag }: { tag: { name: string; color: string } }) {
   return <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-[11px] font-medium"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: tag.color }} />{tag.name}</span>;
-}
-
-function VisibilityOption({ value, label, description, defaultChecked = false }: { value: "private" | "family"; label: string; description: string; defaultChecked?: boolean }) {
-  return (
-    <label className="flex min-h-12 cursor-pointer items-start gap-2 rounded-lg bg-white p-3 text-sm shadow-[inset_0_0_0_1px_hsl(var(--border))] has-[:checked]:shadow-[inset_0_0_0_2px_hsl(var(--primary))]">
-      <input name="visibility" type="radio" value={value} defaultChecked={defaultChecked} className="mt-1" />
-      <span><span className="block font-medium">{label}</span><span className="text-xs text-muted-foreground">{description}</span></span>
-    </label>
-  );
 }
 
 function parseScope(value?: string): DocumentScope {

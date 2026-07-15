@@ -1,18 +1,25 @@
+import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/server/auth";
-import { readDocumentFile } from "@/server/pdf/indexer";
+import { findAccessibleDocumentFile } from "@/server/documents/file";
+
+export const runtime = "nodejs";
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
   const { id } = await params;
-  const file = await readDocumentFile(id, user.id);
+  const file = await findAccessibleDocumentFile(id, user.id, user.role === "admin");
   if (!file) return NextResponse.json({ message: "Nicht gefunden" }, { status: 404 });
 
-  return new NextResponse(new Uint8Array(file.buffer), {
+  const stream = Readable.toWeb(createReadStream(file.storagePath));
+  return new NextResponse(stream as ReadableStream, {
     headers: {
-      "Content-Type": "application/pdf",
+      "Content-Type": file.mimeType,
       "Cache-Control": "private, no-store",
-      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(file.document.originalName)}`
+      "Content-Length": String(file.size),
+      "X-Content-Type-Options": "nosniff",
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(file.originalName)}`
     }
   });
 }

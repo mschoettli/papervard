@@ -6,7 +6,7 @@ vi.stubGlobal("React", React);
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/documents" }));
 vi.mock("next/image", () => ({
-  default: ({ priority: _priority, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { priority?: boolean }) => <img {...props} />
+  default: ({ priority: _priority, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { priority?: boolean }) => <img alt="" {...props} />
 }));
 vi.mock("@/server/actions/auth", () => ({ logoutAction: vi.fn() }));
 

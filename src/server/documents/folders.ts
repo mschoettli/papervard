@@ -36,15 +36,19 @@ export function trashExpiresAt(deletedAt: Date) {
   return new Date(deletedAt.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
 }
 
-export function folderAccessWhere(userId: string, householdIds: string[]): Prisma.FolderWhereInput {
+export function folderAccessWhere(userId: string, householdIds: string[], isAdmin = false): Prisma.FolderWhereInput {
   return {
     AND: [
       { deletedAt: null },
       {
-        OR: [
-          { visibility: "private", createdByUserId: userId },
-          { visibility: "family", householdId: { in: householdIds } }
-        ]
+        ...(isAdmin
+          ? { householdId: { in: householdIds } }
+          : {
+              OR: [
+                { visibility: "private", createdByUserId: userId },
+                { visibility: "family", householdId: { in: householdIds } }
+              ]
+            })
       }
     ]
   };
@@ -97,9 +101,9 @@ export async function resolveUploadFolder(options: {
   return folder;
 }
 
-export async function accessibleFolderIds(userId: string, householdIds: string[], rootId?: string) {
+export async function accessibleFolderIds(userId: string, householdIds: string[], rootId?: string, isAdmin = false) {
   const folders = await prisma.folder.findMany({
-    where: folderAccessWhere(userId, householdIds),
+    where: folderAccessWhere(userId, householdIds, isAdmin),
     select: { id: true, parentId: true }
   });
   return rootId ? collectDescendantFolderIds(folders, rootId) : folders.map((folder) => folder.id);

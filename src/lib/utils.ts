@@ -5,9 +5,9 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatBytes(bytes: number) {
-  const units = ["B", "KB", "MB", "GB"];
-  let size = bytes;
+export function formatBytes(bytes: number | bigint) {
+  const units = ["B", "KB", "MB", "GB", "TB", "PB", "EB"];
+  let size = typeof bytes === "bigint" ? Number(bytes) : bytes;
   let unit = 0;
 
   while (size >= 1024 && unit < units.length - 1) {

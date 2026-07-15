@@ -13,5 +13,5 @@ export async function GET(request: Request) {
     ? requestedScope as "all" | "mine" | "family" | "favorites"
     : "all";
 
-  return NextResponse.json(await hybridSearch(user.id, q, { year, scope }));
+  return NextResponse.json(await hybridSearch(user.id, q, { year, scope, isAdmin: user.role === "admin" }));
 }

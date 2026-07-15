@@ -8,8 +8,8 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 FROM base AS deps
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 
 FROM deps AS builder
 COPY . .
@@ -23,7 +23,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ARG APP_GIT_SHA=unknown
 ENV APP_GIT_SHA=$APP_GIT_SHA
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl poppler-utils tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng tesseract-ocr-fra tesseract-ocr-ita tesseract-ocr-spa \
+  && apt-get install -y --no-install-recommends openssl gosu libarchive-tools poppler-utils tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng tesseract-ocr-fra tesseract-ocr-ita tesseract-ocr-spa \
   && rm -rf /var/lib/apt/lists/* \
   && groupadd --system --gid 1001 nodejs \
   && useradd --system --uid 1001 nextjs
@@ -34,10 +34,11 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json tsconfig.json ./
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/src ./src
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN ./node_modules/.bin/prisma generate \
-  && mkdir -p /app/storage/pdfs \
-  && chown -R nextjs:nodejs /app/storage /app/node_modules/.prisma /app/node_modules/@prisma/client
-USER nextjs
+  && chmod +x ./docker-entrypoint.sh \
+  && chown -R nextjs:nodejs /app/node_modules/.prisma /app/node_modules/@prisma/client
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 EXPOSE 3000
 HEALTHCHECK CMD node -e "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "server.js"]

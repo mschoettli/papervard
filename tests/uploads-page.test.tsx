@@ -13,6 +13,9 @@ vi.mock("@/lib/prisma", () => ({
     document: {
       findMany: vi.fn(async () => [])
     },
+    folder: {
+      findMany: vi.fn(async () => [])
+    },
     householdMember: {
       findMany: vi.fn(async () => [{ householdId: "family-1" }])
     }

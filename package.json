@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "next lint",
+    "worker": "tsx src/server/jobs/worker.ts",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "prisma:generate": "prisma generate",
@@ -15,15 +16,20 @@
     "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@cornerstonejs/core": "^5.6.1",
+    "@cornerstonejs/dicom-image-loader": "^5.6.1",
+    "@cornerstonejs/tools": "^5.6.1",
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
+    "dicom-parser": "^1.8.21",
     "lucide-react": "^0.468.0",
     "next": "^15.1.0",
     "pdf-parse": "^1.1.1",
     "prisma": "^5.22.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "sharp": "^0.35.3",
     "tailwind-merge": "^2.5.5",
     "zod": "^3.24.1"
   },
@@ -36,10 +42,15 @@
     "autoprefixer": "^10.4.20",
     "eslint": "^9.17.0",
     "eslint-config-next": "^15.1.0",
-    "postcss": "^8.4.49",
+    "postcss": "8.5.15",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "@cornerstonejs/dicom-image-loader": {
+      "uuid": "11.1.1"
+    }
   }
 }

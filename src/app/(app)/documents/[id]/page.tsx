@@ -1,12 +1,16 @@
 import Link from "next/link";
-import { ArrowLeft, Download, Folder, Heart, Lock, RotateCw, Search, Tags, Trash2, Users } from "lucide-react";
+import { ArrowLeft, Download, FilePenLine, Folder, Heart, Lock, RotateCw, Search, Tags, Trash2, Users } from "lucide-react";
 import { notFound } from "next/navigation";
 import { Button } from "@/components/button";
+import { DocumentPreview } from "@/components/document-preview";
 import { StatusPill } from "@/components/status-pill";
 import { formatBytes } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
 import {
   reindexDocumentAction,
+  createDocumentNoteAction,
+  deleteDocumentNoteAction,
+  restoreDocumentVersionAction,
   moveDocumentAction,
   trashDocumentAction,
   toggleFavoriteDocumentAction,
@@ -16,6 +20,8 @@ import { updateDocumentTagsAction } from "@/server/actions/library";
 import { requireUser } from "@/server/auth";
 import { documentAccessWhere, householdIdsForUser } from "@/server/documents/access";
 import { folderAccessWhere } from "@/server/documents/folders";
+import { isImageEditable, isTextEditable } from "@/server/editing/versions";
+import { isOnlyOfficeEditable } from "@/server/office/config";
 import { hybridSearch } from "@/server/search/search";
 
 export default async function DocumentPage({
@@ -31,20 +37,33 @@ export default async function DocumentPage({
   const query = (requested.q ?? "").trim();
   const householdIds = await householdIdsForUser(user.id);
   const document = await prisma.document.findFirst({
-    where: { id, ...documentAccessWhere(user.id, householdIds) },
+    where: { id, ...documentAccessWhere(user.id, householdIds, user.role === "admin") },
     include: {
       owner: { select: { name: true } },
       favorites: { where: { userId: user.id }, select: { id: true } },
       chunks: { select: { id: true, content: true }, take: 8 },
       folder: { select: { id: true, name: true } },
-      tags: { include: { tag: true }, orderBy: { tag: { name: "asc" } } }
+      tags: { include: { tag: true }, orderBy: { tag: { name: "asc" } } },
+      versions: {
+        include: { author: { select: { name: true } }, blob: { select: { size: true } } },
+        orderBy: { versionNumber: "desc" }
+      },
+      annotations: {
+        where: { kind: "note", deletedAt: null },
+        include: { author: { select: { name: true } } },
+        orderBy: { createdAt: "desc" }
+      }
     }
   });
   if (!document) notFound();
 
   const [folders, tags] = await Promise.all([
     prisma.folder.findMany({
-      where: { ...folderAccessWhere(user.id, householdIds), visibility: document.visibility },
+      where: {
+        ...folderAccessWhere(user.id, householdIds, user.role === "admin"),
+        visibility: document.visibility,
+        ...(document.visibility === "private" ? { createdByUserId: document.ownerUserId } : {})
+      },
       select: { id: true, name: true, visibility: true },
       orderBy: { name: "asc" }
     }),
@@ -55,12 +74,15 @@ export default async function DocumentPage({
   ]);
 
   const selectedPage = requested.page ? Math.max(1, Number(requested.page) || 1) : undefined;
-  const pdfSrc = `/api/documents/${document.id}/file${selectedPage ? `#page=${selectedPage}` : ""}`;
+  const extractedText = document.chunks.map((chunk) => chunk.content).join("\n\n");
   const extractedChars = document.chunks.reduce((sum, chunk) => sum + chunk.content.trim().length, 0);
   const textQuality = document.indexStatus !== "indexed" ? "Noch nicht bereit" : extractedChars < 400 ? "Wenig Text erkannt" : "Gut lesbar";
   const matches = query
-    ? await hybridSearch(user.id, query, { documentId: document.id, limit: 12 })
+    ? await hybridSearch(user.id, query, { documentId: document.id, limit: 12, isAdmin: user.role === "admin" })
     : { results: [], total: 0 };
+  const canEdit = isOnlyOfficeEditable(document)
+    || isTextEditable(document)
+    || (document.family === "image" && isImageEditable(document));
 
   return (
     <div className="mx-auto max-w-screen-2xl space-y-5">
@@ -87,6 +109,11 @@ export default async function DocumentPage({
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          {canEdit ? (
+            <Link href={`/documents/${document.id}/edit`} className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-white px-4 text-sm font-medium hover:bg-muted">
+              <FilePenLine aria-hidden="true" size={18} /> Bearbeiten
+            </Link>
+          ) : null}
           <form action={toggleFavoriteDocumentAction}>
             <input type="hidden" name="documentId" value={document.id} />
             <Button variant="secondary">
@@ -132,8 +159,16 @@ export default async function DocumentPage({
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="relative min-h-[60vh] overflow-hidden rounded-lg border border-border bg-muted">
-          <iframe title={`PDF: ${document.title}`} src={pdfSrc} className="h-[72vh] min-h-[560px] w-full bg-white" />
-          <noscript><p className="p-4 text-sm">Die PDF-Vorschau benötigt JavaScript. Nutze den Download oben.</p></noscript>
+          <DocumentPreview
+            id={document.id}
+            title={document.title}
+            family={document.family}
+            format={document.format}
+            mimeType={document.mimeType}
+            extractedText={extractedText}
+            canEdit={canEdit}
+            page={selectedPage}
+          />
         </div>
         <aside className="space-y-4">
           <section className="rounded-lg border border-border bg-white p-4">
@@ -146,6 +181,61 @@ export default async function DocumentPage({
               <Info label="Ordner" value={document.folder.name} />
               {selectedPage ? <Info label="Geöffnete Seite" value={String(selectedPage)} /> : null}
             </dl>
+          </section>
+
+          <section className="rounded-lg border border-border bg-white p-4">
+            <h2 className="font-semibold">Gemeinsame Notizen</h2>
+            <form action={createDocumentNoteAction} className="mt-3">
+              <input type="hidden" name="documentId" value={document.id} />
+              <label className="sr-only" htmlFor="document-note">Neue Notiz</label>
+              <textarea id="document-note" name="text" required maxLength={10_000} placeholder="Hinweis zum Inhalt …" className="min-h-24 w-full rounded-md border border-border p-3 text-sm" />
+              <button className="mt-2 min-h-10 w-full rounded-md bg-muted px-3 text-sm font-medium">Notiz hinzufügen</button>
+            </form>
+            <div className="mt-4 max-h-72 space-y-2 overflow-y-auto">
+              {document.annotations.map((annotation) => {
+                const data = annotation.data as { text?: string };
+                return (
+                  <article key={annotation.id} className="rounded-md border border-border p-3 text-sm">
+                    <p className="whitespace-pre-wrap break-words">{data.text}</p>
+                    <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                      <span>{annotation.author.name} · {annotation.createdAt.toLocaleString("de-CH")}</span>
+                      {(annotation.authorUserId === user.id || user.role === "admin") ? (
+                        <form action={deleteDocumentNoteAction}>
+                          <input type="hidden" name="annotationId" value={annotation.id} />
+                          <button className="min-h-8 px-2 text-red-700">Löschen</button>
+                        </form>
+                      ) : null}
+                    </div>
+                  </article>
+                );
+              })}
+              {document.annotations.length === 0 ? <p className="text-sm text-muted-foreground">Noch keine Notizen.</p> : null}
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-border bg-white p-4">
+            <h2 className="font-semibold">Versionen</h2>
+            <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
+              {document.versions.map((version) => (
+                <div key={version.id} className="rounded-md border border-border p-3 text-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium">Version {version.versionNumber}</p>
+                      <p className="text-xs text-muted-foreground">{version.author?.name ?? version.actorLabel ?? "System"} · {version.createdAt.toLocaleString("de-CH")}</p>
+                      <p className="text-xs text-muted-foreground">{formatBytes(version.blob.size)} · {version.source}</p>
+                      {version.isConflict ? <p className="mt-1 text-xs font-medium text-amber-700">Konfliktversion – nicht automatisch aktiviert</p> : null}
+                    </div>
+                    {version.id !== document.currentVersionId ? (
+                      <form action={restoreDocumentVersionAction}>
+                        <input type="hidden" name="documentId" value={document.id} />
+                        <input type="hidden" name="versionId" value={version.id} />
+                        <button className="min-h-10 rounded-md bg-muted px-3 text-xs font-medium">Wiederherstellen</button>
+                      </form>
+                    ) : <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-700">Aktuell</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
           </section>
 
           <section className="rounded-lg border border-border bg-white p-4">
@@ -187,7 +277,7 @@ export default async function DocumentPage({
                 <option value="family">Meine Familie</option>
               </select>
               <button className="mt-3 h-10 w-full rounded-md border border-border text-sm font-medium hover:bg-muted">Zugriff speichern</button>
-              <p className="mt-2 text-xs text-muted-foreground">Private Dokumente bleiben auch für Familien-Admins unsichtbar.</p>
+              <p className="mt-2 text-xs text-muted-foreground">Familien-Admins können private Dokumente zur Verwaltung und Wiederherstellung sehen.</p>
             </form>
           ) : null}
 

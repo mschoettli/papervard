@@ -14,17 +14,16 @@ export async function householdIdsForUser(userId: string) {
   return memberships.map((membership) => membership.householdId);
 }
 
-export function documentAccessWhere(userId: string, householdIds: string[]): Prisma.DocumentWhereInput {
+export function documentAccessWhere(userId: string, householdIds: string[], isAdmin = false): Prisma.DocumentWhereInput {
   return {
     AND: [
       { deletedAt: null },
       {
         OR: [
           { ownerUserId: userId },
-          {
-            visibility: "family",
-            householdId: { in: householdIds }
-          }
+          isAdmin
+            ? { householdId: { in: householdIds } }
+            : { visibility: "family", householdId: { in: householdIds } }
         ]
       }
     ]
@@ -34,9 +33,10 @@ export function documentAccessWhere(userId: string, householdIds: string[]): Pri
 export function documentScopeWhere(
   userId: string,
   householdIds: string[],
-  scope: DocumentScope
+  scope: DocumentScope,
+  isAdmin = false
 ): Prisma.DocumentWhereInput {
-  const access = documentAccessWhere(userId, householdIds);
+  const access = documentAccessWhere(userId, householdIds, isAdmin);
 
   if (scope === "mine") return { AND: [access, { ownerUserId: userId }] };
   if (scope === "family") {

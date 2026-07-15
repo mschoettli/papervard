@@ -12,7 +12,7 @@ import { documentAccessWhere, householdIdsForUser } from "@/server/documents/acc
 export default async function HomePage() {
   const user = await requireUser();
   const householdIds = await householdIdsForUser(user.id);
-  const accessWhere = documentAccessWhere(user.id, householdIds);
+  const accessWhere = documentAccessWhere(user.id, householdIds, user.role === "admin");
   const [totalDocuments, totalSize, recentDocuments, favoriteRecords, favoriteCount] = await Promise.all([
     prisma.document.count({ where: accessWhere }),
     prisma.document.aggregate({ where: accessWhere, _sum: { size: true } }),
@@ -83,7 +83,7 @@ type DashboardDocument = {
   id: string;
   title: string;
   year: number;
-  size: number;
+  size: bigint;
   favorites: { id: string }[];
 };
 

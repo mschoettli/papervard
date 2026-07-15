@@ -40,4 +40,14 @@ describe("document search access", () => {
     expect(params).toContainEqual(["folder-1", "folder-child"]);
     expect(params).toContainEqual(["tag-tax", "tag-paid"]);
   });
+
+  it("lets administrators search private documents in their family", async () => {
+    const { hybridSearch } = await import("@/server/search/search");
+
+    await hybridSearch("admin-1", "befund", { isAdmin: true });
+
+    const [sql, ...params] = queryRaw.mock.calls.at(-1) ?? [];
+    expect(sql).toContain("$12::boolean");
+    expect(params).toContain(true);
+  });
 });

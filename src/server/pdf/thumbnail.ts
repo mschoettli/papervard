@@ -6,6 +6,8 @@ import { access, copyFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { storageLayout } from "@/server/documents/blobs";
+import { createImageThumbnail } from "@/server/previews/image";
 
 const execFileAsync = promisify(execFile);
 
@@ -14,7 +16,7 @@ export function pdfStorageRoot() {
 }
 
 export function thumbnailRoot() {
-  return path.join(pdfStorageRoot(), "thumbnails");
+  return storageLayout().thumbnails;
 }
 
 export function thumbnailPath(documentId: string) {
@@ -53,7 +55,12 @@ export async function ensureDocumentThumbnail(documentId: string, pdfPath: strin
   return createDocumentThumbnail(documentId, pdfPath);
 }
 
-export async function readOrCreateDocumentThumbnail(documentId: string, pdfPath: string) {
-  const filePath = await ensureDocumentThumbnail(documentId, pdfPath);
+export async function readOrCreateDocumentThumbnail(documentId: string, sourcePath: string, family: string = "document") {
+  const target = thumbnailPath(documentId);
+  const filePath = await fileExists(target)
+    ? target
+    : family === "image"
+      ? await createImageThumbnail(documentId, sourcePath)
+      : await createDocumentThumbnail(documentId, sourcePath);
   return readFile(filePath);
 }

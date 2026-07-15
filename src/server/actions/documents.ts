@@ -3,70 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin, requireUser } from "@/server/auth";
 import { canShareWithHousehold, documentAccessWhere, householdIdsForUser } from "@/server/documents/access";
-import { ensureUnsortedFolder, folderAccessWhere, resolveUploadFolder } from "@/server/documents/folders";
-import { indexDocument, saveUploadedPdf } from "@/server/pdf/indexer";
-
-const MAX_PDF_SIZE = 50 * 1024 * 1024;
-const MAX_UPLOAD_SIZE = 75 * 1024 * 1024;
-
-const uploadSchema = z.object({
-  year: z.preprocess(
-    (value) => (value === "" || value === null ? undefined : value),
-    z.coerce.number().int().min(1900).max(new Date().getFullYear() + 1).optional()
-  ),
-  visibility: z.enum(["private", "family"]).default("private")
-});
-
-export async function uploadPdfAction(formData: FormData) {
-  const user = await requireUser();
-  const files = formData
-    .getAll("file")
-    .filter((entry): entry is File => entry instanceof File && entry.size > 0);
-  const { year, visibility } = uploadSchema.parse({
-    year: formData.get("year"),
-    visibility: formData.get("visibility") ?? "private"
-  });
-
-  if (files.length === 0) {
-    throw new Error("Bitte mindestens eine PDF-Datei auswählen.");
-  }
-
-  if (files.some((file) => file.size > MAX_PDF_SIZE)) {
-    throw new Error("Eine PDF darf höchstens 50 MB groß sein.");
-  }
-  if (files.reduce((total, file) => total + file.size, 0) > MAX_UPLOAD_SIZE) {
-    throw new Error("Pro Upload sind insgesamt höchstens 75 MB erlaubt.");
-  }
-
-  const membership = await prisma.householdMember.findFirst({
-    where: { userId: user.id },
-    select: { householdId: true }
-  });
-  if (!membership) throw new Error("Für diesen Benutzer ist keine Familie eingerichtet.");
-  const requestedFolderId = String(formData.get("folderId") ?? "").trim() || undefined;
-  const folder = await resolveUploadFolder({
-    requestedFolderId,
-    userId: user.id,
-    householdId: membership.householdId,
-    visibility
-  });
-
-  for (const file of files) {
-    await saveUploadedPdf(file, {
-      ownerUserId: user.id,
-      householdId: membership.householdId,
-      visibility,
-      yearOverride: year,
-      folderId: folder.id
-    });
-  }
-
-  revalidatePath("/documents");
-  revalidatePath("/admin/uploads");
-}
+import { ensureUnsortedFolder, folderAccessWhere } from "@/server/documents/folders";
+import { createDocumentVersion } from "@/server/documents/versions";
+import { indexDocument } from "@/server/pdf/indexer";
 
 const documentSchema = z.object({
   id: z.string().min(1),
@@ -84,7 +27,7 @@ export async function updateDocumentAction(formData: FormData) {
 
   const householdIds = await householdIdsForUser(admin.id);
   const accessible = await prisma.document.findFirst({
-    where: { id: parsed.id, ...documentAccessWhere(admin.id, householdIds) },
+    where: { id: parsed.id, ...documentAccessWhere(admin.id, householdIds, true) },
     select: { id: true }
   });
   if (!accessible) throw new Error("Dokument nicht gefunden.");
@@ -103,7 +46,7 @@ export async function reindexDocumentAction(formData: FormData) {
   const id = String(formData.get("id"));
   const householdIds = await householdIdsForUser(admin.id);
   const accessible = await prisma.document.findFirst({
-    where: { id, ...documentAccessWhere(admin.id, householdIds) },
+    where: { id, ...documentAccessWhere(admin.id, householdIds, true) },
     select: { id: true }
   });
   if (!accessible) throw new Error("Dokument nicht gefunden.");
@@ -120,7 +63,7 @@ export async function toggleFavoriteDocumentAction(formData: FormData) {
 
   const householdIds = await householdIdsForUser(user.id);
   const accessible = await prisma.document.findFirst({
-    where: { id: documentId, ...documentAccessWhere(user.id, householdIds) },
+    where: { id: documentId, ...documentAccessWhere(user.id, householdIds, user.role === "admin") },
     select: { id: true }
   });
   if (!accessible) throw new Error("Dokument nicht gefunden.");
@@ -174,12 +117,12 @@ export async function moveDocumentAction(formData: FormData) {
   });
   const householdIds = await householdIdsForUser(user.id);
   const document = await prisma.document.findFirst({
-    where: { id: parsed.documentId, ...documentAccessWhere(user.id, householdIds) },
+    where: { id: parsed.documentId, ...documentAccessWhere(user.id, householdIds, user.role === "admin") },
     select: { id: true, visibility: true, householdId: true, ownerUserId: true }
   });
   if (!document) throw new Error("Dokument nicht gefunden.");
   const folder = await prisma.folder.findFirst({
-    where: { id: parsed.targetFolderId, ...folderAccessWhere(user.id, householdIds) }
+    where: { id: parsed.targetFolderId, ...folderAccessWhere(user.id, householdIds, user.role === "admin") }
   });
   if (!folder || folder.visibility !== document.visibility || folder.householdId !== document.householdId) {
     throw new Error("Dokumente können nicht zwischen privaten und gemeinsamen Bereichen verschoben werden.");
@@ -197,7 +140,7 @@ export async function trashDocumentAction(formData: FormData) {
   const documentId = z.string().min(1).parse(formData.get("documentId"));
   const householdIds = await householdIdsForUser(user.id);
   const document = await prisma.document.findFirst({
-    where: { id: documentId, ...documentAccessWhere(user.id, householdIds) },
+    where: { id: documentId, ...documentAccessWhere(user.id, householdIds, user.role === "admin") },
     select: { id: true, folderId: true }
   });
   if (!document) throw new Error("Dokument nicht gefunden.");
@@ -210,6 +153,108 @@ export async function trashDocumentAction(formData: FormData) {
   redirect("/documents");
 }
 
+export async function restoreDocumentVersionAction(formData: FormData) {
+  const user = await requireUser();
+  const parsed = z.object({ documentId: z.string().min(1), versionId: z.string().min(1) }).parse({
+    documentId: formData.get("documentId"),
+    versionId: formData.get("versionId")
+  });
+  const householdIds = await householdIdsForUser(user.id);
+  const document = await prisma.document.findFirst({
+    where: { id: parsed.documentId, ...documentAccessWhere(user.id, householdIds, user.role === "admin") },
+    select: {
+      id: true,
+      versions: {
+        where: { id: parsed.versionId },
+        select: { blob: { select: { checksum: true, size: true, storagePath: true, mimeType: true } } }
+      }
+    }
+  });
+  const selected = document?.versions[0];
+  if (!document || !selected) throw new Error("Version nicht gefunden.");
+  const version = await createDocumentVersion({
+    documentId: document.id,
+    checksum: selected.blob.checksum,
+    size: selected.blob.size,
+    storagePath: selected.blob.storagePath,
+    mimeType: selected.blob.mimeType,
+    source: "restore",
+    authorUserId: user.id
+  });
+  await prisma.processingJob.createMany({ data: [
+    { type: "extract", documentId: document.id, versionId: version.id, stage: "queued" },
+    { type: "preview", documentId: document.id, versionId: version.id, stage: "queued" }
+  ] });
+  revalidatePath(`/documents/${document.id}`);
+  revalidatePath("/documents");
+}
+
+export async function createDocumentNoteAction(formData: FormData) {
+  const user = await requireUser();
+  const parsed = z.object({
+    documentId: z.string().min(1),
+    text: z.string().transform((value) => value.trim()).pipe(z.string().min(1).max(10_000))
+  }).parse({ documentId: formData.get("documentId"), text: formData.get("text") });
+  const householdIds = await householdIdsForUser(user.id);
+  const document = await prisma.document.findFirst({
+    where: { id: parsed.documentId, ...documentAccessWhere(user.id, householdIds, user.role === "admin") },
+    select: { id: true, currentVersionId: true }
+  });
+  if (!document) throw new Error("Dokument nicht gefunden.");
+  await prisma.$transaction(async (transaction) => {
+    const annotation = await transaction.annotation.create({
+      data: {
+        documentId: document.id,
+        versionId: document.currentVersionId,
+        authorUserId: user.id,
+        kind: "note",
+        data: { text: parsed.text } as Prisma.InputJsonValue
+      }
+    });
+    await transaction.contentChange.create({
+      data: {
+        documentId: document.id,
+        versionId: document.currentVersionId,
+        actorUserId: user.id,
+        kind: "comment_changed",
+        details: { annotationId: annotation.id, action: "created" }
+      }
+    });
+  });
+  revalidatePath(`/documents/${document.id}`);
+}
+
+export async function deleteDocumentNoteAction(formData: FormData) {
+  const user = await requireUser();
+  const annotationId = z.string().min(1).parse(formData.get("annotationId"));
+  const householdIds = await householdIdsForUser(user.id);
+  const annotation = await prisma.annotation.findFirst({
+    where: {
+      id: annotationId,
+      kind: "note",
+      deletedAt: null,
+      document: documentAccessWhere(user.id, householdIds, user.role === "admin")
+    },
+    select: { id: true, documentId: true, versionId: true, authorUserId: true }
+  });
+  if (!annotation || (annotation.authorUserId !== user.id && user.role !== "admin")) {
+    throw new Error("Nur Autor oder Administrator dürfen diese Notiz löschen.");
+  }
+  await prisma.$transaction([
+    prisma.annotation.update({ where: { id: annotation.id }, data: { deletedAt: new Date() } }),
+    prisma.contentChange.create({
+      data: {
+        documentId: annotation.documentId,
+        versionId: annotation.versionId,
+        actorUserId: user.id,
+        kind: "comment_changed",
+        details: { annotationId: annotation.id, action: "deleted" }
+      }
+    })
+  ]);
+  revalidatePath(`/documents/${annotation.documentId}`);
+}
+
 export async function bulkDocumentAction(formData: FormData) {
   const admin = await requireAdmin();
   const action = String(formData.get("bulkAction") ?? "");
@@ -217,7 +262,7 @@ export async function bulkDocumentAction(formData: FormData) {
   if (ids.length === 0) return;
   const householdIds = await householdIdsForUser(admin.id);
   const allowedDocuments = await prisma.document.findMany({
-    where: { AND: [{ id: { in: ids } }, documentAccessWhere(admin.id, householdIds)] },
+    where: { AND: [{ id: { in: ids } }, documentAccessWhere(admin.id, householdIds, true)] },
     select: { id: true }
   });
   const allowedIds = allowedDocuments.map((document) => document.id);

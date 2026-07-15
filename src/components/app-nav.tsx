@@ -5,7 +5,7 @@ import Image from "next/image";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Archive, Home, LogOut, Settings, Upload, Users } from "lucide-react";
+import { Archive, Home, Layers3, LogOut, Settings, Upload, Users } from "lucide-react";
 import { logoutAction } from "@/server/actions/auth";
 import { cn } from "@/lib/utils";
 
@@ -57,6 +57,7 @@ export function AppNav({ user, updateAvailable = false }: { user: AppUser; updat
         <div className="flex gap-1 lg:block lg:space-y-1">
           <NavItem href="/" icon={<Home size={18} />} label="Dashboard" />
           <NavItem href="/documents" icon={<Archive size={18} />} label="Dokumente" />
+          <NavItem href="/collections" icon={<Layers3 size={18} />} label="Sammlungen" />
         </div>
         {user.role === "admin" ? (
           <div className="flex gap-1 lg:block lg:space-y-1">

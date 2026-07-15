@@ -20,16 +20,16 @@ afterEach(() => {
 });
 
 describe("PDF thumbnails", () => {
-  it("uses a deterministic thumbnail path below the PDF storage root", async () => {
-    vi.stubEnv("PDF_STORAGE_PATH", "/tmp/papervard-pdfs");
+  it("uses a deterministic thumbnail path below the shared data root", async () => {
+    vi.stubEnv("PAPERVARD_DATA_PATH", "/tmp/papervard-data");
     const { thumbnailPath } = await import("@/server/pdf/thumbnail");
 
-    expect(thumbnailPath("doc-123")).toBe("/tmp/papervard-pdfs/thumbnails/doc-123.png");
+    expect(thumbnailPath("doc-123")).toBe("/tmp/papervard-data/thumbnails/doc-123.png");
   });
 
   it("creates and reuses a stored first-page thumbnail", async () => {
     const workDir = await mkdtemp(path.join(tmpdir(), "papervard-thumbnail-test-"));
-    vi.stubEnv("PDF_STORAGE_PATH", workDir);
+    vi.stubEnv("PAPERVARD_DATA_PATH", workDir);
 
     try {
       const pdfPath = path.join(workDir, "source.pdf");

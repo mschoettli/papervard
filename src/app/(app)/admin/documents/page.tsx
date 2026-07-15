@@ -10,7 +10,7 @@ export default async function AdminDocumentsPage() {
   const admin = await requireAdmin();
   const householdIds = await householdIdsForUser(admin.id);
   const documents = await prisma.document.findMany({
-    where: documentAccessWhere(admin.id, householdIds),
+    where: documentAccessWhere(admin.id, householdIds, true),
     orderBy: [{ year: "desc" }, { title: "asc" }]
   });
 

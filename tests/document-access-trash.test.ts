@@ -15,4 +15,18 @@ describe("active document access", () => {
       ]
     });
   });
+
+  it("lets an administrator access private documents in their family", () => {
+    expect(documentAccessWhere("admin-1", ["family-1"], true)).toEqual({
+      AND: [
+        { deletedAt: null },
+        {
+          OR: [
+            { ownerUserId: "admin-1" },
+            { householdId: { in: ["family-1"] } }
+          ]
+        }
+      ]
+    });
+  });
 });

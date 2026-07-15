@@ -1,54 +1,160 @@
+name: papervard
+
+x-papervard-environment: &papervard-environment
+  DATABASE_URL: postgresql://papervard:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD in .env setzen}@db:5432/papervard?schema=public
+  PAPERVARD_DATA_PATH: /data
+  PAPERVARD_CONFIG_PATH: /config
+  PAPERVARD_INTERNAL_URL: http://app:3000
+  TIKA_URL: http://tika:9998
+  ONLYOFFICE_INTERNAL_URL: http://onlyoffice
+  ONLYOFFICE_JWT_SECRET: ${ONLYOFFICE_JWT_SECRET:?ONLYOFFICE_JWT_SECRET in .env setzen}
+  NEXT_PUBLIC_ONLYOFFICE_URL: ${ONLYOFFICE_BROWSER_URL:-http://localhost:8081}
+  AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+  OCR_LANGUAGES: ${OCR_LANGUAGES:-deu+eng+fra+ita+spa}
+  TZ: ${TZ:-Europe/Zurich}
+
 services:
   db:
     image: pgvector/pgvector:pg16
+    restart: unless-stopped
     environment:
       POSTGRES_DB: papervard
       POSTGRES_USER: papervard
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-    ports:
-      - "5432:5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD in .env setzen}
+      PGDATA: /papervard-data/postgres
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - data:/papervard-data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U papervard -d papervard"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
 
   app:
     image: ${PAPERVARD_IMAGE:-ghcr.io/mschoettli/papervard:latest}
+    build:
+      context: .
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
+      tika:
+        condition: service_healthy
+      onlyoffice:
+        condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://papervard:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/papervard?schema=public
-      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in .env}
-      AUTH_COOKIE_SECURE: "false"
-      GITHUB_REPOSITORY: mschoettli/papervard
-      GITHUB_BRANCH: main
+      <<: *papervard-environment
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      PAPERVARD_SIGNING_SECRET: ${PAPERVARD_SIGNING_SECRET:-}
+      DICOM_FIELD_KEY: ${DICOM_FIELD_KEY:-}
+      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-mschoettli/papervard}
+      GITHUB_BRANCH: ${GITHUB_BRANCH:-main}
       UPDATE_API_URL: http://watchtower:8080/v1/update
-      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:?Set WATCHTOWER_HTTP_API_TOKEN in .env}
-      PDF_STORAGE_PATH: /app/storage/pdfs
-      EMBEDDING_MODEL_PATH: /app/models/multilingual-local
-      OCR_LANGUAGES: deu+eng+fra+ita+spa
+      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:-}
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@papervard.local}
-      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?Set SEED_ADMIN_PASSWORD in .env}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?SEED_ADMIN_PASSWORD in .env setzen}
     ports:
-      - "3000:3000"
+      - "${PAPERVARD_PORT:-3000}:3000"
     volumes:
-      - pdf_storage:/app/storage/pdfs
+      - config:/config
+      - data:/data
     labels:
       com.centurylinklabs.watchtower.enable: "true"
-    command: sh -c "./node_modules/.bin/prisma migrate deploy && npm run db:seed && node server.js"
+    command: ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && npm run db:seed && node server.js"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  worker:
+    image: ${PAPERVARD_IMAGE:-ghcr.io/mschoettli/papervard:latest}
+    build:
+      context: .
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      <<: *papervard-environment
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      PAPERVARD_SIGNING_SECRET: ${PAPERVARD_SIGNING_SECRET:-}
+      DICOM_FIELD_KEY: ${DICOM_FIELD_KEY:-}
+      WORKER_IDLE_DELAY_MS: 1000
+      SMB_SYNC_ENABLED: "true"
+      SMB_SYNC_INTERVAL_MS: 5000
+    volumes:
+      - config:/config
+      - data:/data
+    command: ["npm", "run", "worker"]
+
+  tika:
+    image: apache/tika:3.3.1.0-full
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9998/version || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  onlyoffice:
+    image: onlyoffice/documentserver:9.4.0.1
+    restart: unless-stopped
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: ${ONLYOFFICE_JWT_SECRET:?ONLYOFFICE_JWT_SECRET in .env setzen}
+      JWT_HEADER: AuthorizationJwt
+      ALLOW_PRIVATE_IP_ADDRESS: "true"
+      TZ: ${TZ:-Europe/Zurich}
+    ports:
+      - "${ONLYOFFICE_PORT:-8081}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/healthcheck || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+
+  samba:
+    image: ghcr.io/servercontainers/samba:a3.23.2-s4.22.6-r0
+    restart: unless-stopped
+    environment:
+      ACCOUNT_admin: ${SMB_ADMIN_PASSWORD:?SMB_ADMIN_PASSWORD in .env setzen}
+      UID_admin: "1001"
+      SAMBA_CONF_WORKGROUP: ${SMB_WORKGROUP:-WORKGROUP}
+      SAMBA_CONF_SERVER_STRING: Papervard
+      AVAHI_DISABLE: "true"
+      WSDD2_DISABLE: "true"
+      NETBIOS_DISABLE: "true"
+      SAMBA_VOLUME_CONFIG_papervard: >-
+        [Papervard]; path = /shares/library; valid users = admin; read only = no;
+        browseable = yes; guest ok = no; force user = admin; create mask = 0660;
+        directory mask = 0770; vfs objects = catia fruit streams_xattr
+    ports:
+      - "${SMB_PORT:-445}:445"
+    volumes:
+      - data:/shares
 
   watchtower:
     image: containrrr/watchtower:latest
+    profiles: ["updates"]
+    restart: unless-stopped
     environment:
-      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:?Set WATCHTOWER_HTTP_API_TOKEN in .env}
+      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:-updates-profile-not-configured}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    command: --http-api-update --label-enable --cleanup --rolling-restart
+    command: ["--http-api-update", "--label-enable", "--cleanup", "--rolling-restart"]
 
 volumes:
-  postgres_data:
-  pdf_storage:
+  config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PAPERVARD_CONFIG_PATH:-./config}
+  data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PAPERVARD_DATA_PATH:-./data}

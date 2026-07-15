@@ -31,33 +31,114 @@ enum DocumentVisibility {
   family
 }
 
+enum DocumentFamily {
+  document
+  spreadsheet
+  presentation
+  image
+  email
+  ebook
+  dicom
+  archive
+}
+
+enum VersionSource {
+  upload
+  web_editor
+  smb
+  restore
+  conversion
+}
+
+enum UploadStatus {
+  uploading
+  uploaded
+  processing
+  completed
+  failed
+  canceled
+}
+
+enum ProcessingJobStatus {
+  queued
+  processing
+  awaiting_password
+  paused
+  completed
+  failed
+  canceled
+}
+
+enum ProcessingJobType {
+  ingest
+  validate
+  extract
+  preview
+  ocr
+  index
+  convert
+  import_collection
+  sync_smb
+}
+
+enum AnnotationKind {
+  comment
+  highlight
+  drawing
+  measurement
+  roi
+  segmentation
+  bookmark
+  redaction
+  note
+}
+
+enum ContentChangeKind {
+  version_created
+  version_restored
+  dicom_instance_added
+  comment_changed
+  annotation_changed
+  ownership_transferred
+}
+
 model User {
-  id                   String             @id @default(cuid())
-  email                String             @unique
-  name                 String
-  passwordHash         String
-  role                 Role               @default(user)
-  active               Boolean            @default(true)
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
-  favorites            FavoriteDocument[]
-  savedSearches        SavedSearch[]
-  householdMemberships HouseholdMember[]
-  ownedDocuments       Document[]         @relation("DocumentOwner")
-  createdFolders       Folder[]           @relation("FolderCreator")
-  createdTags          Tag[]              @relation("TagCreator")
-  assignedDocumentTags DocumentTag[]      @relation("DocumentTagAssigner")
+  id                      String             @id @default(cuid())
+  email                   String             @unique
+  name                    String
+  passwordHash            String
+  role                    Role               @default(user)
+  active                  Boolean            @default(true)
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+  favorites               FavoriteDocument[]
+  savedSearches           SavedSearch[]
+  householdMemberships    HouseholdMember[]
+  ownedDocuments          Document[]         @relation("DocumentOwner")
+  createdFolders          Folder[]           @relation("FolderCreator")
+  createdTags             Tag[]              @relation("TagCreator")
+  assignedDocumentTags    DocumentTag[]      @relation("DocumentTagAssigner")
+  documentVersions        DocumentVersion[]  @relation("VersionAuthor")
+  uploadSessions          UploadSession[]
+  createdCollections      Collection[]       @relation("CollectionCreator")
+  annotations             Annotation[]
+  contentChanges          ContentChange[]
+  assignedFolderTags      FolderTag[]        @relation("FolderTagAssigner")
+  assignedCollectionTags  CollectionTag[]    @relation("CollectionTagAssigner")
+  assignedDicomSeriesTags DicomSeriesTag[]   @relation("DicomSeriesTagAssigner")
 }
 
 model Household {
-  id        String            @id @default(cuid())
-  name      String
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
-  members   HouseholdMember[]
-  documents Document[]
-  folders   Folder[]
-  tags      Tag[]
+  id             String            @id @default(cuid())
+  name           String
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  members        HouseholdMember[]
+  documents      Document[]
+  folders        Folder[]
+  tags           Tag[]
+  collections    Collection[]
+  uploadSessions UploadSession[]
 }
 
 model HouseholdMember {
@@ -74,34 +155,45 @@ model HouseholdMember {
 }
 
 model Document {
-  id           String             @id @default(cuid())
-  title        String
-  originalName String
-  year         Int
-  yearLocked   Boolean            @default(false)
-  mimeType     String
-  size         Int
-  storagePath  String
-  checksum     String
-  pageCount    Int                @default(0)
-  indexStatus  IndexStatus        @default(queued)
-  indexError   String?
-  ownerUserId  String
-  householdId  String
-  visibility   DocumentVisibility @default(private)
-  folderId     String
-  deletedAt    DateTime?
+  id                  String             @id @default(cuid())
+  title               String
+  originalName        String
+  year                Int
+  yearLocked          Boolean            @default(false)
+  family              DocumentFamily     @default(document)
+  format              String             @default("pdf")
+  mimeType            String
+  size                BigInt
+  storagePath         String
+  checksum            String
+  pageCount           Int                @default(0)
+  indexStatus         IndexStatus        @default(queued)
+  indexError          String?
+  ownerUserId         String
+  householdId         String
+  visibility          DocumentVisibility @default(private)
+  folderId            String
+  deletedAt           DateTime?
   deletedFromFolderId String?
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
-  chunks       TextChunk[]
-  favorites    FavoriteDocument[]
-  owner        User               @relation("DocumentOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
-  household    Household          @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  folder       Folder             @relation(fields: [folderId], references: [id], onDelete: Restrict)
-  tags         DocumentTag[]
+  currentVersionId    String?            @unique
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  chunks              TextChunk[]
+  favorites           FavoriteDocument[]
+  owner               User               @relation("DocumentOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  household           Household          @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  folder              Folder             @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  tags                DocumentTag[]
+  versions            DocumentVersion[]  @relation("DocumentVersions")
+  currentVersion      DocumentVersion?   @relation("CurrentDocumentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  processingJobs      ProcessingJob[]
+  collectionItems     CollectionItem[]
+  annotations         Annotation[]
+  contentChanges      ContentChange[]
+  dicomStudy          DicomStudy?
+  smbEntry            SmbSyncEntry?
 
-  @@unique([ownerUserId, checksum])
+  @@index([ownerUserId, checksum])
   @@index([ownerUserId])
   @@index([householdId, visibility])
   @@index([year])
@@ -127,6 +219,9 @@ model Folder {
   parent              Folder?            @relation("FolderChildren", fields: [parentId], references: [id], onDelete: Restrict)
   children            Folder[]           @relation("FolderChildren")
   documents           Document[]
+  tags                FolderTag[]
+  uploadSessions      UploadSession[]
+  smbEntry            SmbSyncEntry?
 
   @@index([parentId, deletedAt])
   @@index([createdByUserId, visibility, deletedAt])
@@ -134,33 +229,316 @@ model Folder {
 }
 
 model Tag {
-  id              String        @id @default(cuid())
+  id              String           @id @default(cuid())
   name            String
-  color           String        @default("#64748b")
+  color           String           @default("#64748b")
   householdId     String
   createdByUserId String
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  household       Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  creator         User          @relation("TagCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  household       Household        @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  creator         User             @relation("TagCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
   documents       DocumentTag[]
+  folders         FolderTag[]
+  collections     CollectionTag[]
+  dicomSeries     DicomSeriesTag[]
 
   @@unique([householdId, name])
   @@index([createdByUserId])
 }
 
 model DocumentTag {
-  documentId      String
-  tagId           String
+  documentId       String
+  tagId            String
   assignedByUserId String
-  createdAt       DateTime @default(now())
-  document        Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  tag             Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
-  assignedBy      User     @relation("DocumentTagAssigner", fields: [assignedByUserId], references: [id], onDelete: Cascade)
+  createdAt        DateTime @default(now())
+  document         Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  tag              Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  assignedBy       User     @relation("DocumentTagAssigner", fields: [assignedByUserId], references: [id], onDelete: Cascade)
 
   @@id([documentId, tagId])
   @@index([tagId])
   @@index([assignedByUserId])
+}
+
+model FolderTag {
+  folderId         String
+  tagId            String
+  assignedByUserId String
+  createdAt        DateTime @default(now())
+  folder           Folder   @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  tag              Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  assignedBy       User     @relation("FolderTagAssigner", fields: [assignedByUserId], references: [id], onDelete: Cascade)
+
+  @@id([folderId, tagId])
+  @@index([tagId])
+  @@index([assignedByUserId])
+}
+
+model FileBlob {
+  id             String            @id @default(cuid())
+  checksum       String            @unique
+  size           BigInt
+  mimeType       String
+  storagePath    String            @unique
+  createdAt      DateTime          @default(now())
+  versions       DocumentVersion[]
+  dicomInstances DicomInstance[]
+}
+
+model DocumentVersion {
+  id              String            @id @default(cuid())
+  documentId      String
+  versionNumber   Int
+  blobId          String
+  source          VersionSource
+  authorUserId    String?
+  actorLabel      String?
+  baseVersionId   String?
+  isConflict      Boolean           @default(false)
+  createdAt       DateTime          @default(now())
+  document        Document          @relation("DocumentVersions", fields: [documentId], references: [id], onDelete: Cascade)
+  currentFor      Document?         @relation("CurrentDocumentVersion")
+  blob            FileBlob          @relation(fields: [blobId], references: [id], onDelete: Restrict)
+  author          User?             @relation("VersionAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+  baseVersion     DocumentVersion?  @relation("VersionDerivations", fields: [baseVersionId], references: [id], onDelete: SetNull)
+  derivedVersions DocumentVersion[] @relation("VersionDerivations")
+  processingJobs  ProcessingJob[]
+  annotations     Annotation[]
+  contentChanges  ContentChange[]
+
+  @@unique([documentId, versionNumber])
+  @@index([blobId])
+  @@index([authorUserId])
+  @@index([baseVersionId])
+  @@index([documentId, isConflict])
+}
+
+model UploadSession {
+  id              String             @id @default(cuid())
+  ownerUserId     String
+  householdId     String
+  folderId        String?
+  visibility      DocumentVisibility @default(private)
+  originalName    String
+  mimeType        String
+  format          String
+  family          DocumentFamily
+  expectedSize    BigInt?
+  receivedSize    BigInt             @default(0)
+  stagingPath     String             @unique
+  resumeTokenHash String             @unique
+  status          UploadStatus       @default(uploading)
+  error           String?
+  expiresAt       DateTime
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  owner           User               @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  household       Household          @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  folder          Folder?            @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  processingJobs  ProcessingJob[]
+
+  @@index([ownerUserId, status])
+  @@index([householdId])
+  @@index([expiresAt])
+}
+
+model ProcessingJob {
+  id              String              @id @default(cuid())
+  type            ProcessingJobType
+  status          ProcessingJobStatus @default(queued)
+  documentId      String?
+  versionId       String?
+  uploadSessionId String?
+  progress        Int                 @default(0)
+  stage           String              @default("queued")
+  attempts        Int                 @default(0)
+  maxAttempts     Int                 @default(5)
+  checkpoint      Json?
+  error           String?
+  availableAt     DateTime            @default(now())
+  lockedAt        DateTime?
+  workerId        String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  document        Document?           @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version         DocumentVersion?    @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  uploadSession   UploadSession?      @relation(fields: [uploadSessionId], references: [id], onDelete: Cascade)
+
+  @@index([status, availableAt])
+  @@index([documentId])
+  @@index([versionId])
+  @@index([uploadSessionId])
+}
+
+model Collection {
+  id              String             @id @default(cuid())
+  name            String
+  householdId     String
+  createdByUserId String
+  visibility      DocumentVisibility @default(private)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  household       Household          @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  creator         User               @relation("CollectionCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  items           CollectionItem[]
+  tags            CollectionTag[]
+
+  @@index([householdId])
+  @@index([createdByUserId])
+  @@index([householdId, visibility])
+}
+
+model CollectionItem {
+  collectionId String
+  documentId   String
+  relativePath String?
+  position     Int        @default(0)
+  createdAt    DateTime   @default(now())
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  document     Document   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, documentId])
+  @@index([documentId])
+}
+
+model CollectionTag {
+  collectionId     String
+  tagId            String
+  assignedByUserId String
+  createdAt        DateTime   @default(now())
+  collection       Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  tag              Tag        @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  assignedBy       User       @relation("CollectionTagAssigner", fields: [assignedByUserId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, tagId])
+  @@index([tagId])
+  @@index([assignedByUserId])
+}
+
+model Annotation {
+  id            String           @id @default(cuid())
+  documentId    String
+  versionId     String?
+  dicomSeriesId String?
+  authorUserId  String
+  kind          AnnotationKind
+  data          Json
+  deletedAt     DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  document      Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version       DocumentVersion? @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  dicomSeries   DicomSeries?     @relation(fields: [dicomSeriesId], references: [id], onDelete: Cascade)
+  author        User             @relation(fields: [authorUserId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, createdAt])
+  @@index([versionId])
+  @@index([dicomSeriesId])
+  @@index([authorUserId])
+}
+
+model ContentChange {
+  id          String            @id @default(cuid())
+  documentId  String
+  versionId   String?
+  actorUserId String?
+  actorLabel  String?
+  kind        ContentChangeKind
+  details     Json?
+  createdAt   DateTime          @default(now())
+  document    Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version     DocumentVersion?  @relation(fields: [versionId], references: [id], onDelete: SetNull)
+  actor       User?             @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([documentId, createdAt])
+  @@index([versionId])
+  @@index([actorUserId])
+}
+
+model DicomStudy {
+  id                         String        @id @default(cuid())
+  documentId                 String        @unique
+  studyInstanceUid           String        @unique
+  patientNameCiphertext      String?
+  patientBirthDateCiphertext String?
+  patientIdCiphertext        String?
+  studyDate                  DateTime?
+  description                String?
+  createdAt                  DateTime      @default(now())
+  updatedAt                  DateTime      @updatedAt
+  document                   Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  series                     DicomSeries[]
+
+  @@index([studyInstanceUid])
+}
+
+model DicomSeries {
+  id                String           @id @default(cuid())
+  studyId           String
+  seriesInstanceUid String
+  seriesNumber      Int?
+  modality          String?
+  description       String?
+  bodyPart          String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  study             DicomStudy       @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  instances         DicomInstance[]
+  annotations       Annotation[]
+  tags              DicomSeriesTag[]
+
+  @@unique([studyId, seriesInstanceUid])
+  @@index([studyId, seriesNumber])
+}
+
+model DicomInstance {
+  id                String      @id @default(cuid())
+  seriesId          String
+  blobId            String
+  sopInstanceUid    String
+  instanceNumber    Int?
+  rows              Int?
+  columns           Int?
+  frames            Int         @default(1)
+  transferSyntaxUid String?
+  createdAt         DateTime    @default(now())
+  series            DicomSeries @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  blob              FileBlob    @relation(fields: [blobId], references: [id], onDelete: Restrict)
+
+  @@unique([seriesId, sopInstanceUid])
+  @@index([seriesId, instanceNumber])
+  @@index([blobId])
+}
+
+model DicomSeriesTag {
+  dicomSeriesId    String
+  tagId            String
+  assignedByUserId String
+  createdAt        DateTime    @default(now())
+  dicomSeries      DicomSeries @relation(fields: [dicomSeriesId], references: [id], onDelete: Cascade)
+  tag              Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  assignedBy       User        @relation("DicomSeriesTagAssigner", fields: [assignedByUserId], references: [id], onDelete: Cascade)
+
+  @@id([dicomSeriesId, tagId])
+  @@index([tagId])
+  @@index([assignedByUserId])
+}
+
+model SmbSyncEntry {
+  id             String    @id @default(cuid())
+  relativePath   String    @unique
+  documentId     String?   @unique
+  folderId       String?   @unique
+  entryType      String
+  lastChecksum   String?
+  lastSize       BigInt?
+  lastModifiedAt DateTime?
+  syncState      String    @default("synced")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  document       Document? @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  folder         Folder?   @relation(fields: [folderId], references: [id], onDelete: Cascade)
 }
 
 model FavoriteDocument {

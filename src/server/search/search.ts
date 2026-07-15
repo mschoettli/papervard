@@ -25,6 +25,7 @@ export type SearchFilters = {
   offset?: number;
   folderIds?: string[];
   tagIds?: string[];
+  isAdmin?: boolean;
 };
 
 export async function hybridSearch(userId: string, query: string, filters: SearchFilters = {}) {
@@ -40,6 +41,7 @@ export async function hybridSearch(userId: string, query: string, filters: Searc
   const offset = Math.max(filters.offset ?? 0, 0);
   const folderIds = [...new Set(filters.folderIds ?? [])];
   const tagIds = [...new Set(filters.tagIds ?? [])];
+  const isAdmin = filters.isAdmin ?? false;
 
   const rows = await prisma.$queryRawUnsafe<RawSearchRow[]>(`
     WITH q AS (
@@ -80,6 +82,7 @@ export async function hybridSearch(userId: string, query: string, filters: Searc
         )
         AND (
           d."ownerUserId" = $4::text
+          OR ($12::boolean AND d."householdId" = ANY($5::text[]))
           OR (d."visibility" = 'family'::"DocumentVisibility" AND d."householdId" = ANY($5::text[]))
         )
         AND (
@@ -109,7 +112,7 @@ export async function hybridSearch(userId: string, query: string, filters: Searc
     WHERE result_number = 1
     ORDER BY ((COALESCE(keyword_rank, 0) * 0.62) + (COALESCE(semantic_rank, 0) * 0.38)) DESC
     LIMIT $8::int OFFSET $9::int
-  `, cleanQuery, embedding, year, userId, householdIds, scope, documentId, limit, offset, folderIds, tagIds);
+  `, cleanQuery, embedding, year, userId, householdIds, scope, documentId, limit, offset, folderIds, tagIds, isAdmin);
 
   return {
     results: rows.map((row) => ({

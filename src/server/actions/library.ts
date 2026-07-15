@@ -50,7 +50,7 @@ export async function createFolderAction(formData: FormData) {
   let parent = null;
   if (parsed.parentId) {
     parent = await prisma.folder.findFirst({
-      where: { id: parsed.parentId, ...folderAccessWhere(user.id, householdIds) }
+      where: { id: parsed.parentId, ...folderAccessWhere(user.id, householdIds, user.role === "admin") }
     });
     if (!parent || parent.visibility !== parsed.visibility) {
       throw new Error("Der übergeordnete Ordner passt nicht zur gewählten Sichtbarkeit.");
@@ -90,7 +90,7 @@ export async function renameFolderAction(formData: FormData) {
     name: formData.get("name")
   });
   const folder = await prisma.folder.findFirst({
-    where: { id: parsed.id, ...folderAccessWhere(user.id, householdIds) }
+    where: { id: parsed.id, ...folderAccessWhere(user.id, householdIds, user.role === "admin") }
   });
   if (!folder) throw new Error("Ordner nicht gefunden.");
   if (folder.isSystem) throw new Error("Der Systemordner „Unsortiert“ kann nicht umbenannt werden.");
@@ -120,14 +120,14 @@ export async function moveFolderAction(formData: FormData) {
     targetFolderId: formData.get("targetFolderId")
   });
   const folder = await prisma.folder.findFirst({
-    where: { id: parsed.folderId, ...folderAccessWhere(user.id, householdIds) }
+    where: { id: parsed.folderId, ...folderAccessWhere(user.id, householdIds, user.role === "admin") }
   });
   if (!folder) throw new Error("Ordner nicht gefunden.");
   if (folder.isSystem) throw new Error("Der Systemordner „Unsortiert“ kann nicht verschoben werden.");
 
   const target = parsed.targetFolderId
     ? await prisma.folder.findFirst({
-        where: { id: parsed.targetFolderId, ...folderAccessWhere(user.id, householdIds) }
+        where: { id: parsed.targetFolderId, ...folderAccessWhere(user.id, householdIds, user.role === "admin") }
       })
     : null;
   if (parsed.targetFolderId && !target) throw new Error("Zielordner nicht gefunden.");
@@ -136,7 +136,7 @@ export async function moveFolderAction(formData: FormData) {
   }
 
   const peers = await prisma.folder.findMany({
-    where: folderAccessWhere(user.id, householdIds),
+    where: folderAccessWhere(user.id, householdIds, user.role === "admin"),
     select: { id: true, parentId: true }
   });
   if (moveWouldCreateCycle(peers, folder.id, target?.id ?? null)) {
@@ -151,7 +151,7 @@ export async function trashFolderAction(formData: FormData) {
   const { user, householdIds } = await userContext();
   const folderId = idSchema.parse(formData.get("folderId"));
   const folder = await prisma.folder.findFirst({
-    where: { id: folderId, ...folderAccessWhere(user.id, householdIds) }
+    where: { id: folderId, ...folderAccessWhere(user.id, householdIds, user.role === "admin") }
   });
   if (!folder) throw new Error("Ordner nicht gefunden.");
   if (folder.isSystem) throw new Error("Der Systemordner „Unsortiert“ kann nicht gelöscht werden.");
@@ -223,13 +223,27 @@ export async function mergeTagAction(formData: FormData) {
     select: { id: true, householdId: true }
   });
   if (tags.length !== 2 || tags[0].householdId !== tags[1].householdId) throw new Error("Tags können nicht zusammengeführt werden.");
-  const assignments = await prisma.documentTag.findMany({
-    where: { tagId: parsed.sourceTagId },
-    select: { documentId: true }
-  });
+  const [documentAssignments, folderAssignments, collectionAssignments, dicomSeriesAssignments] = await Promise.all([
+    prisma.documentTag.findMany({ where: { tagId: parsed.sourceTagId }, select: { documentId: true } }),
+    prisma.folderTag.findMany({ where: { tagId: parsed.sourceTagId }, select: { folderId: true } }),
+    prisma.collectionTag.findMany({ where: { tagId: parsed.sourceTagId }, select: { collectionId: true } }),
+    prisma.dicomSeriesTag.findMany({ where: { tagId: parsed.sourceTagId }, select: { dicomSeriesId: true } })
+  ]);
   await prisma.$transaction([
     prisma.documentTag.createMany({
-      data: assignments.map(({ documentId }) => ({ documentId, tagId: parsed.targetTagId, assignedByUserId: user.id })),
+      data: documentAssignments.map(({ documentId }) => ({ documentId, tagId: parsed.targetTagId, assignedByUserId: user.id })),
+      skipDuplicates: true
+    }),
+    prisma.folderTag.createMany({
+      data: folderAssignments.map(({ folderId }) => ({ folderId, tagId: parsed.targetTagId, assignedByUserId: user.id })),
+      skipDuplicates: true
+    }),
+    prisma.collectionTag.createMany({
+      data: collectionAssignments.map(({ collectionId }) => ({ collectionId, tagId: parsed.targetTagId, assignedByUserId: user.id })),
+      skipDuplicates: true
+    }),
+    prisma.dicomSeriesTag.createMany({
+      data: dicomSeriesAssignments.map(({ dicomSeriesId }) => ({ dicomSeriesId, tagId: parsed.targetTagId, assignedByUserId: user.id })),
       skipDuplicates: true
     }),
     prisma.tag.delete({ where: { id: parsed.sourceTagId } })
@@ -251,7 +265,7 @@ export async function updateDocumentTagsAction(formData: FormData) {
   const documentId = idSchema.parse(formData.get("documentId"));
   const tagIds = [...new Set(formData.getAll("tagId").map(String).filter(Boolean))];
   const document = await prisma.document.findFirst({
-    where: { id: documentId, ...documentAccessWhere(user.id, householdIds) },
+    where: { id: documentId, ...documentAccessWhere(user.id, householdIds, user.role === "admin") },
     select: { id: true, householdId: true }
   });
   if (!document) throw new Error("Dokument nicht gefunden.");
@@ -268,23 +282,92 @@ export async function updateDocumentTagsAction(formData: FormData) {
   revalidateLibrary(document.id);
 }
 
-function trashedFolderAccess(userId: string, householdIds: string[]) {
+async function selectedHouseholdTags(formData: FormData, householdId: string) {
+  const tagIds = [...new Set(formData.getAll("tagId").map(String).filter(Boolean))];
+  const tags = tagIds.length
+    ? await prisma.tag.findMany({ where: { id: { in: tagIds }, householdId }, select: { id: true } })
+    : [];
+  if (tags.length !== tagIds.length) throw new Error("Mindestens ein Tag ist nicht verfügbar.");
+  return tags;
+}
+
+export async function updateFolderTagsAction(formData: FormData) {
+  const { user, householdIds } = await userContext();
+  const folderId = idSchema.parse(formData.get("folderId"));
+  const folder = await prisma.folder.findFirst({
+    where: { id: folderId, ...folderAccessWhere(user.id, householdIds, user.role === "admin") },
+    select: { id: true, householdId: true }
+  });
+  if (!folder) throw new Error("Ordner nicht gefunden.");
+  const tags = await selectedHouseholdTags(formData, folder.householdId);
+  await prisma.$transaction([
+    prisma.folderTag.deleteMany({ where: { folderId: folder.id } }),
+    prisma.folderTag.createMany({ data: tags.map((tag) => ({ folderId: folder.id, tagId: tag.id, assignedByUserId: user.id })) })
+  ]);
+  revalidateLibrary();
+}
+
+export async function updateCollectionTagsAction(formData: FormData) {
+  const { user, householdIds } = await userContext();
+  const collectionId = idSchema.parse(formData.get("collectionId"));
+  const collection = await prisma.collection.findFirst({
+    where: {
+      id: collectionId,
+      householdId: { in: householdIds },
+      ...(user.role === "admin" ? {} : { OR: [{ createdByUserId: user.id }, { visibility: "family" }] })
+    },
+    select: { id: true, householdId: true }
+  });
+  if (!collection) throw new Error("Sammlung nicht gefunden.");
+  const tags = await selectedHouseholdTags(formData, collection.householdId);
+  await prisma.$transaction([
+    prisma.collectionTag.deleteMany({ where: { collectionId: collection.id } }),
+    prisma.collectionTag.createMany({ data: tags.map((tag) => ({ collectionId: collection.id, tagId: tag.id, assignedByUserId: user.id })) })
+  ]);
+  revalidatePath("/collections");
+  revalidatePath(`/collections/${collection.id}`);
+}
+
+export async function updateDicomSeriesTagsAction(formData: FormData) {
+  const { user, householdIds } = await userContext();
+  const seriesId = idSchema.parse(formData.get("seriesId"));
+  const series = await prisma.dicomSeries.findFirst({
+    where: {
+      id: seriesId,
+      study: { document: documentAccessWhere(user.id, householdIds, user.role === "admin") }
+    },
+    select: { id: true, study: { select: { document: { select: { id: true, householdId: true } } } } }
+  });
+  if (!series) throw new Error("DICOM-Serie nicht gefunden.");
+  const tags = await selectedHouseholdTags(formData, series.study.document.householdId);
+  await prisma.$transaction([
+    prisma.dicomSeriesTag.deleteMany({ where: { dicomSeriesId: series.id } }),
+    prisma.dicomSeriesTag.createMany({ data: tags.map((tag) => ({ dicomSeriesId: series.id, tagId: tag.id, assignedByUserId: user.id })) })
+  ]);
+  revalidatePath(`/documents/${series.study.document.id}/dicom`);
+}
+
+function trashedFolderAccess(userId: string, householdIds: string[], isAdmin = false) {
   return {
     deletedAt: { not: null },
-    OR: [
-      { visibility: "private" as const, createdByUserId: userId },
-      { visibility: "family" as const, householdId: { in: householdIds } }
-    ]
+    ...(isAdmin
+      ? { householdId: { in: householdIds } }
+      : { OR: [
+          { visibility: "private" as const, createdByUserId: userId },
+          { visibility: "family" as const, householdId: { in: householdIds } }
+        ] })
   };
 }
 
-function trashedDocumentAccess(userId: string, householdIds: string[]) {
+function trashedDocumentAccess(userId: string, householdIds: string[], isAdmin = false) {
   return {
     deletedAt: { not: null },
-    OR: [
-      { ownerUserId: userId },
-      { visibility: "family" as const, householdId: { in: householdIds } }
-    ]
+    ...(isAdmin
+      ? { householdId: { in: householdIds } }
+      : { OR: [
+          { ownerUserId: userId },
+          { visibility: "family" as const, householdId: { in: householdIds } }
+        ] })
   };
 }
 
@@ -296,10 +379,10 @@ export async function restoreTrashItemAction(formData: FormData) {
   });
 
   if (parsed.type === "folder") {
-    const folder = await prisma.folder.findFirst({ where: { id: parsed.id, ...trashedFolderAccess(user.id, householdIds) } });
+    const folder = await prisma.folder.findFirst({ where: { id: parsed.id, ...trashedFolderAccess(user.id, householdIds, user.role === "admin") } });
     if (!folder) throw new Error("Ordner im Papierkorb nicht gefunden.");
     const formerParent = folder.deletedFromParentId
-      ? await prisma.folder.findFirst({ where: { id: folder.deletedFromParentId, ...folderAccessWhere(user.id, householdIds), visibility: folder.visibility } })
+      ? await prisma.folder.findFirst({ where: { id: folder.deletedFromParentId, ...folderAccessWhere(user.id, householdIds, user.role === "admin"), visibility: folder.visibility } })
       : null;
     const fallback = folder.deletedFromParentId && !formerParent
       ? await ensureUnsortedFolder({
@@ -313,10 +396,10 @@ export async function restoreTrashItemAction(formData: FormData) {
       data: { deletedAt: null, deletedFromParentId: null, parentId: formerParent?.id ?? fallback?.id ?? null }
     });
   } else {
-    const document = await prisma.document.findFirst({ where: { id: parsed.id, ...trashedDocumentAccess(user.id, householdIds) } });
+    const document = await prisma.document.findFirst({ where: { id: parsed.id, ...trashedDocumentAccess(user.id, householdIds, user.role === "admin") } });
     if (!document) throw new Error("Dokument im Papierkorb nicht gefunden.");
     const formerFolder = document.deletedFromFolderId
-      ? await prisma.folder.findFirst({ where: { id: document.deletedFromFolderId, ...folderAccessWhere(user.id, householdIds), visibility: document.visibility } })
+      ? await prisma.folder.findFirst({ where: { id: document.deletedFromFolderId, ...folderAccessWhere(user.id, householdIds, user.role === "admin"), visibility: document.visibility } })
       : null;
     const fallback = formerFolder ?? await ensureUnsortedFolder({
       userId: document.ownerUserId,
@@ -331,12 +414,36 @@ export async function restoreTrashItemAction(formData: FormData) {
   revalidateLibrary();
 }
 
-async function permanentlyDeleteDocument(id: string, storagePath: string) {
+async function permanentlyDeleteDocument(id: string) {
+  const document = await prisma.document.findUnique({
+    where: { id },
+    select: {
+      storagePath: true,
+      versions: { select: { blob: { select: { id: true, storagePath: true } } } },
+      dicomStudy: {
+        select: { series: { select: { instances: { select: { blob: { select: { id: true, storagePath: true } } } } } } }
+      }
+    }
+  });
+  if (!document) return;
+  const blobs = new Map<string, string>();
+  for (const version of document.versions) blobs.set(version.blob.id, version.blob.storagePath);
+  for (const series of document.dicomStudy?.series ?? []) {
+    for (const instance of series.instances) blobs.set(instance.blob.id, instance.blob.storagePath);
+  }
   await prisma.document.delete({ where: { id } });
-  await Promise.all([
-    unlink(storagePath).catch(() => undefined),
-    unlink(thumbnailPath(id)).catch(() => undefined)
-  ]);
+  for (const [blobId, storagePath] of blobs) {
+    const references = await prisma.fileBlob.findUnique({
+      where: { id: blobId },
+      select: { _count: { select: { versions: true, dicomInstances: true } } }
+    });
+    if (references && references._count.versions === 0 && references._count.dicomInstances === 0) {
+      await prisma.fileBlob.delete({ where: { id: blobId } });
+      await unlink(storagePath).catch(() => undefined);
+    }
+  }
+  if (blobs.size === 0) await unlink(document.storagePath).catch(() => undefined);
+  await unlink(thumbnailPath(id)).catch(() => undefined);
 }
 
 export async function permanentlyDeleteTrashItemAction(formData: FormData) {
@@ -347,14 +454,14 @@ export async function permanentlyDeleteTrashItemAction(formData: FormData) {
   });
   if (parsed.type === "document") {
     const document = await prisma.document.findFirst({
-      where: { id: parsed.id, ...trashedDocumentAccess(user.id, householdIds) },
-      select: { id: true, storagePath: true }
+      where: { id: parsed.id, ...trashedDocumentAccess(user.id, householdIds, user.role === "admin") },
+      select: { id: true }
     });
     if (!document) throw new Error("Dokument im Papierkorb nicht gefunden.");
-    await permanentlyDeleteDocument(document.id, document.storagePath);
+    await permanentlyDeleteDocument(document.id);
   } else {
     const folder = await prisma.folder.findFirst({
-      where: { id: parsed.id, ...trashedFolderAccess(user.id, householdIds), isSystem: false },
+      where: { id: parsed.id, ...trashedFolderAccess(user.id, householdIds, user.role === "admin"), isSystem: false },
       select: { id: true }
     });
     if (!folder) throw new Error("Ordner im Papierkorb nicht gefunden.");
@@ -366,11 +473,11 @@ export async function permanentlyDeleteTrashItemAction(formData: FormData) {
 export async function emptyTrashAction() {
   const { user, householdIds } = await userContext();
   const documents = await prisma.document.findMany({
-    where: trashedDocumentAccess(user.id, householdIds),
-    select: { id: true, storagePath: true }
+    where: trashedDocumentAccess(user.id, householdIds, user.role === "admin"),
+    select: { id: true }
   });
-  for (const document of documents) await permanentlyDeleteDocument(document.id, document.storagePath);
-  await prisma.folder.deleteMany({ where: { ...trashedFolderAccess(user.id, householdIds), isSystem: false } });
+  for (const document of documents) await permanentlyDeleteDocument(document.id);
+  await prisma.folder.deleteMany({ where: { ...trashedFolderAccess(user.id, householdIds, user.role === "admin"), isSystem: false } });
   revalidateLibrary();
 }
 
@@ -379,8 +486,8 @@ export async function purgeExpiredTrash() {
   const cutoff = new Date(Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
   const documents = await prisma.document.findMany({
     where: { deletedAt: { lte: cutoff } },
-    select: { id: true, storagePath: true }
+    select: { id: true }
   });
-  for (const document of documents) await permanentlyDeleteDocument(document.id, document.storagePath);
+  for (const document of documents) await permanentlyDeleteDocument(document.id);
   await prisma.folder.deleteMany({ where: { deletedAt: { lte: cutoff }, isSystem: false } });
 }

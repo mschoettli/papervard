@@ -4,6 +4,8 @@ dist
 coverage
 .env
 .env.local
+config/
+data/
 storage/pdfs/*
 !storage/pdfs/.gitkeep
 *.log

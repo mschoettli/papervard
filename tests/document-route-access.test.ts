@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
   findFirst: vi.fn(),
-  readDocumentFile: vi.fn(),
+  findAccessibleDocumentFile: vi.fn(),
   thumbnail: vi.fn(async () => Buffer.from("fake-png"))
 }));
 
@@ -16,6 +16,9 @@ vi.mock("@/lib/prisma", () => ({
     document: {
       findUnique: mocks.findUnique,
       findFirst: mocks.findFirst
+    },
+    householdMember: {
+      findFirst: vi.fn(async () => null)
     }
   }
 }));
@@ -24,8 +27,8 @@ vi.mock("@/server/pdf/thumbnail", () => ({
   readOrCreateDocumentThumbnail: mocks.thumbnail
 }));
 
-vi.mock("@/server/pdf/indexer", () => ({
-  readDocumentFile: mocks.readDocumentFile
+vi.mock("@/server/documents/file", () => ({
+  findAccessibleDocumentFile: mocks.findAccessibleDocumentFile
 }));
 
 describe("document file authorization", () => {
@@ -39,7 +42,7 @@ describe("document file authorization", () => {
       visibility: "private"
     });
     mocks.findFirst.mockResolvedValue(null);
-    mocks.readDocumentFile.mockImplementation(async (_id: string, userId?: string) =>
+    mocks.findAccessibleDocumentFile.mockImplementation(async (_id: string, userId?: string) =>
       userId
         ? null
         : {
@@ -68,6 +71,6 @@ describe("document file authorization", () => {
     });
 
     expect(response.status).toBe(404);
-    expect(mocks.readDocumentFile).toHaveBeenCalledWith("doc-1", "user-1");
+    expect(mocks.findAccessibleDocumentFile).toHaveBeenCalledWith("doc-1", "user-1", false);
   });
 });

@@ -14,7 +14,7 @@ export async function GET(request: Request) {
 
   const householdIds = await householdIdsForUser(admin.id);
   const documents = await prisma.document.findMany({
-    where: { AND: [{ id: { in: ids } }, documentAccessWhere(admin.id, householdIds)] },
+    where: { AND: [{ id: { in: ids } }, documentAccessWhere(admin.id, householdIds, true)] },
     orderBy: [{ year: "desc" }, { title: "asc" }]
   });
 
