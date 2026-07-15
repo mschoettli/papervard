@@ -4,6 +4,10 @@ const config: Config = {
   content: ["./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      fontFamily: {
+        display: ["Iowan Old Style", "Palatino Linotype", "Book Antiqua", "serif"],
+        sans: ["Avenir Next", "Avenir", "Segoe UI", "sans-serif"]
+      },
       colors: {
         border: "hsl(var(--border))",
         background: "hsl(var(--background))",

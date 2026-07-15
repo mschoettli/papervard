@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, Download, Heart, Lock, RotateCw, Search, Users } from "lucide-react";
+import { ArrowLeft, Download, Folder, Heart, Lock, RotateCw, Search, Tags, Trash2, Users } from "lucide-react";
 import { notFound } from "next/navigation";
 import { Button } from "@/components/button";
 import { StatusPill } from "@/components/status-pill";
@@ -7,11 +7,15 @@ import { formatBytes } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
 import {
   reindexDocumentAction,
+  moveDocumentAction,
+  trashDocumentAction,
   toggleFavoriteDocumentAction,
   updateDocumentVisibilityAction
 } from "@/server/actions/documents";
+import { updateDocumentTagsAction } from "@/server/actions/library";
 import { requireUser } from "@/server/auth";
 import { documentAccessWhere, householdIdsForUser } from "@/server/documents/access";
+import { folderAccessWhere } from "@/server/documents/folders";
 import { hybridSearch } from "@/server/search/search";
 
 export default async function DocumentPage({
@@ -31,10 +35,24 @@ export default async function DocumentPage({
     include: {
       owner: { select: { name: true } },
       favorites: { where: { userId: user.id }, select: { id: true } },
-      chunks: { select: { id: true, content: true }, take: 8 }
+      chunks: { select: { id: true, content: true }, take: 8 },
+      folder: { select: { id: true, name: true } },
+      tags: { include: { tag: true }, orderBy: { tag: { name: "asc" } } }
     }
   });
   if (!document) notFound();
+
+  const [folders, tags] = await Promise.all([
+    prisma.folder.findMany({
+      where: { ...folderAccessWhere(user.id, householdIds), visibility: document.visibility },
+      select: { id: true, name: true, visibility: true },
+      orderBy: { name: "asc" }
+    }),
+    prisma.tag.findMany({
+      where: { householdId: document.householdId },
+      orderBy: { name: "asc" }
+    })
+  ]);
 
   const selectedPage = requested.page ? Math.max(1, Number(requested.page) || 1) : undefined;
   const pdfSrc = `/api/documents/${document.id}/file${selectedPage ? `#page=${selectedPage}` : ""}`;
@@ -125,9 +143,40 @@ export default async function DocumentPage({
               <Info label="Größe" value={formatBytes(document.size)} />
               <Info label="Seiten" value={String(document.pageCount || "?")} />
               <Info label="Textsuche" value={textQuality} />
+              <Info label="Ordner" value={document.folder.name} />
               {selectedPage ? <Info label="Geöffnete Seite" value={String(selectedPage)} /> : null}
             </dl>
           </section>
+
+          <section className="rounded-lg border border-border bg-white p-4">
+            <h2 className="flex items-center gap-2 font-semibold"><Folder aria-hidden="true" size={17} /> Ablage</h2>
+            <form action={moveDocumentAction} className="mt-3">
+              <input type="hidden" name="documentId" value={document.id} />
+              <label className="text-sm font-medium" htmlFor="document-folder">Ordner</label>
+              <select id="document-folder" name="targetFolderId" defaultValue={document.folderId} className="mt-1 h-10 w-full rounded-md border border-border bg-white px-3 text-sm">
+                {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+              </select>
+              <button className="mt-2 h-10 w-full rounded-md bg-muted text-sm font-medium">Ordner speichern</button>
+            </form>
+          </section>
+
+          <form action={updateDocumentTagsAction} className="rounded-lg border border-border bg-white p-4">
+            <input type="hidden" name="documentId" value={document.id} />
+            <fieldset>
+              <legend className="flex items-center gap-2 font-semibold"><Tags aria-hidden="true" size={17} /> Tags</legend>
+              <div className="mt-3 max-h-48 space-y-1 overflow-y-auto">
+                {tags.map((tag) => (
+                  <label key={tag.id} className="flex min-h-10 items-center gap-2 rounded-md px-2 text-sm hover:bg-muted">
+                    <input type="checkbox" name="tagId" value={tag.id} defaultChecked={document.tags.some((item) => item.tagId === tag.id)} />
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: tag.color }} />
+                    {tag.name}
+                  </label>
+                ))}
+                {tags.length === 0 ? <p className="text-sm text-muted-foreground">Noch keine Tags angelegt.</p> : null}
+              </div>
+            </fieldset>
+            <button className="mt-3 h-10 w-full rounded-md bg-muted text-sm font-medium">Tags speichern</button>
+          </form>
 
           {document.ownerUserId === user.id ? (
             <form action={updateDocumentVisibilityAction} className="rounded-lg border border-border bg-white p-4">
@@ -151,6 +200,11 @@ export default async function DocumentPage({
               </Button>
             </form>
           ) : null}
+
+          <form action={trashDocumentAction} className="rounded-lg bg-red-50 p-4">
+            <input type="hidden" name="documentId" value={document.id} />
+            <button className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md text-sm font-medium text-red-700"><Trash2 aria-hidden="true" size={17} /> In Papierkorb</button>
+          </form>
         </aside>
       </div>
     </div>

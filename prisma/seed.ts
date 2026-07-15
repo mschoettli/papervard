@@ -46,6 +46,30 @@ async function ensureFamilyMembership(userId: string) {
     update: { role: "owner" },
     create: { householdId: household.id, userId, role: "owner" }
   });
+  await prisma.folder.upsert({
+    where: { id: `unsorted-private-${userId}` },
+    update: { deletedAt: null },
+    create: {
+      id: `unsorted-private-${userId}`,
+      name: "Unsortiert",
+      visibility: "private",
+      isSystem: true,
+      createdByUserId: userId,
+      householdId: household.id
+    }
+  });
+  await prisma.folder.upsert({
+    where: { id: `unsorted-family-${household.id}` },
+    update: { deletedAt: null },
+    create: {
+      id: `unsorted-family-${household.id}`,
+      name: "Unsortiert",
+      visibility: "family",
+      isSystem: true,
+      createdByUserId: userId,
+      householdId: household.id
+    }
+  });
 }
 
 main()

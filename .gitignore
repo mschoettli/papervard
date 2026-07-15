@@ -7,3 +7,5 @@ coverage
 storage/pdfs/*
 !storage/pdfs/.gitkeep
 *.log
+*.tsbuildinfo
+output/playwright/

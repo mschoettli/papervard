@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const saveUploadedPdf = vi.fn(async () => ({ id: "document" }));
 const findUnique = vi.fn(async () => null);
+const resolveUploadFolder = vi.fn(async () => ({ id: "folder-1" }));
 
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn()
@@ -28,6 +29,10 @@ vi.mock("@/server/pdf/indexer", () => ({
   saveUploadedPdf
 }));
 
+vi.mock("@/server/documents/folders", () => ({
+  resolveUploadFolder
+}));
+
 describe("uploadPdfAction", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -43,6 +48,7 @@ describe("uploadPdfAction", () => {
     formData.append("file", second);
     formData.set("year", "2024");
     formData.set("visibility", "family");
+    formData.set("folderId", "folder-1");
 
     await uploadPdfAction(formData);
 
@@ -51,13 +57,21 @@ describe("uploadPdfAction", () => {
       ownerUserId: "user-1",
       householdId: "family-1",
       visibility: "family",
-      yearOverride: 2024
+      yearOverride: 2024,
+      folderId: "folder-1"
     });
     expect(saveUploadedPdf).toHaveBeenNthCalledWith(2, second, {
       ownerUserId: "user-1",
       householdId: "family-1",
       visibility: "family",
-      yearOverride: 2024
+      yearOverride: 2024,
+      folderId: "folder-1"
+    });
+    expect(resolveUploadFolder).toHaveBeenCalledWith({
+      requestedFolderId: "folder-1",
+      userId: "user-1",
+      householdId: "family-1",
+      visibility: "family"
     });
   });
 });

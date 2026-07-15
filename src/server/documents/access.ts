@@ -16,11 +16,16 @@ export async function householdIdsForUser(userId: string) {
 
 export function documentAccessWhere(userId: string, householdIds: string[]): Prisma.DocumentWhereInput {
   return {
-    OR: [
-      { ownerUserId: userId },
+    AND: [
+      { deletedAt: null },
       {
-        visibility: "family",
-        householdId: { in: householdIds }
+        OR: [
+          { ownerUserId: userId },
+          {
+            visibility: "family",
+            householdId: { in: householdIds }
+          }
+        ]
       }
     ]
   };

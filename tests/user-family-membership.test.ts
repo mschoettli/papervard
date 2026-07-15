@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   householdUpsert: vi.fn(async () => ({ id: "papervard-family" })),
-  userCreate: vi.fn(async () => ({ id: "user-2" }))
+  userCreate: vi.fn(async () => ({ id: "user-2" })),
+  folderCreateMany: vi.fn(async () => ({ count: 2 }))
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -12,7 +13,8 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     $transaction: vi.fn(async (callback: (tx: unknown) => unknown) => callback({
       household: { upsert: mocks.householdUpsert },
-      user: { create: mocks.userCreate }
+      user: { create: mocks.userCreate },
+      folder: { createMany: mocks.folderCreateMany }
     }))
   }
 }));
@@ -36,6 +38,12 @@ describe("family membership on user creation", () => {
           create: { householdId: "papervard-family", role: "member" }
         }
       })
+    }));
+    expect(mocks.folderCreateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.arrayContaining([
+        expect.objectContaining({ id: "unsorted-private-user-2", isSystem: true }),
+        expect.objectContaining({ id: "unsorted-family-papervard-family", isSystem: true })
+      ])
     }));
   });
 });

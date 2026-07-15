@@ -40,7 +40,7 @@ export async function createUserAction(_: CreateUserState | undefined, formData:
         update: {},
         create: { id: "papervard-family", name: "Familie" }
       });
-      await transaction.user.create({
+      const createdUser = await transaction.user.create({
         data: {
           email: parsed.data.email.toLowerCase(),
           name: parsed.data.name,
@@ -50,6 +50,27 @@ export async function createUserAction(_: CreateUserState | undefined, formData:
             create: { householdId: household.id, role: "member" }
           }
         }
+      });
+      await transaction.folder.createMany({
+        data: [
+          {
+            id: `unsorted-private-${createdUser.id}`,
+            name: "Unsortiert",
+            visibility: "private",
+            isSystem: true,
+            createdByUserId: createdUser.id,
+            householdId: household.id
+          },
+          {
+            id: `unsorted-family-${household.id}`,
+            name: "Unsortiert",
+            visibility: "family",
+            isSystem: true,
+            createdByUserId: createdUser.id,
+            householdId: household.id
+          }
+        ],
+        skipDuplicates: true
       });
     });
   } catch (error) {

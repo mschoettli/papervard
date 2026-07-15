@@ -17,6 +17,7 @@ type SaveUploadedPdfOptions = {
   householdId: string;
   visibility: "private" | "family";
   yearOverride?: number;
+  folderId: string;
 };
 
 export function storageRoot() {
@@ -64,6 +65,7 @@ export async function saveUploadedPdf(file: File, options: SaveUploadedPdfOption
       ownerUserId: options.ownerUserId,
       householdId: options.householdId,
       visibility: options.visibility,
+      folderId: options.folderId,
       yearLocked: options.yearOverride !== undefined,
       indexStatus: "queued"
     }

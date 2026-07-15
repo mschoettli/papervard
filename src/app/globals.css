@@ -23,6 +23,18 @@ body {
     linear-gradient(180deg, hsl(204 28% 97%) 0%, hsl(var(--background)) 42%),
     hsl(var(--background));
   color: hsl(var(--foreground));
+  font-family: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
 }
 
 input,

@@ -1,10 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin, requireUser } from "@/server/auth";
 import { canShareWithHousehold, documentAccessWhere, householdIdsForUser } from "@/server/documents/access";
+import { ensureUnsortedFolder, folderAccessWhere, resolveUploadFolder } from "@/server/documents/folders";
 import { indexDocument, saveUploadedPdf } from "@/server/pdf/indexer";
 
 const MAX_PDF_SIZE = 50 * 1024 * 1024;
@@ -44,13 +46,21 @@ export async function uploadPdfAction(formData: FormData) {
     select: { householdId: true }
   });
   if (!membership) throw new Error("Für diesen Benutzer ist keine Familie eingerichtet.");
+  const requestedFolderId = String(formData.get("folderId") ?? "").trim() || undefined;
+  const folder = await resolveUploadFolder({
+    requestedFolderId,
+    userId: user.id,
+    householdId: membership.householdId,
+    visibility
+  });
 
   for (const file of files) {
     await saveUploadedPdf(file, {
       ownerUserId: user.id,
       householdId: membership.householdId,
       visibility,
-      yearOverride: year
+      yearOverride: year,
+      folderId: folder.id
     });
   }
 
@@ -137,16 +147,67 @@ export async function updateDocumentVisibilityAction(formData: FormData) {
 
   const document = await prisma.document.findFirst({
     where: { id: documentId, ownerUserId: user.id },
-    select: { id: true, householdId: true }
+    select: { id: true, householdId: true, visibility: true }
   });
   if (!document) throw new Error("Nur der Eigentümer darf den Zugriff ändern.");
   if (visibility === "family" && !(await canShareWithHousehold(user.id, document.householdId))) {
     throw new Error("Familienzugriff ist für dieses Dokument nicht möglich.");
   }
 
-  await prisma.document.update({ where: { id: document.id }, data: { visibility } });
+  if (document.visibility !== visibility) {
+    const folder = await ensureUnsortedFolder({
+      userId: user.id,
+      householdId: document.householdId,
+      visibility
+    });
+    await prisma.document.update({ where: { id: document.id }, data: { visibility, folderId: folder.id } });
+  }
   revalidatePath("/documents");
   revalidatePath(`/documents/${document.id}`);
+}
+
+export async function moveDocumentAction(formData: FormData) {
+  const user = await requireUser();
+  const parsed = z.object({ documentId: z.string().min(1), targetFolderId: z.string().min(1) }).parse({
+    documentId: formData.get("documentId"),
+    targetFolderId: formData.get("targetFolderId")
+  });
+  const householdIds = await householdIdsForUser(user.id);
+  const document = await prisma.document.findFirst({
+    where: { id: parsed.documentId, ...documentAccessWhere(user.id, householdIds) },
+    select: { id: true, visibility: true, householdId: true, ownerUserId: true }
+  });
+  if (!document) throw new Error("Dokument nicht gefunden.");
+  const folder = await prisma.folder.findFirst({
+    where: { id: parsed.targetFolderId, ...folderAccessWhere(user.id, householdIds) }
+  });
+  if (!folder || folder.visibility !== document.visibility || folder.householdId !== document.householdId) {
+    throw new Error("Dokumente können nicht zwischen privaten und gemeinsamen Bereichen verschoben werden.");
+  }
+  if (document.visibility === "private" && folder.createdByUserId !== document.ownerUserId) {
+    throw new Error("Der private Zielordner ist nicht verfügbar.");
+  }
+  await prisma.document.update({ where: { id: document.id }, data: { folderId: folder.id } });
+  revalidatePath("/documents");
+  revalidatePath(`/documents/${document.id}`);
+}
+
+export async function trashDocumentAction(formData: FormData) {
+  const user = await requireUser();
+  const documentId = z.string().min(1).parse(formData.get("documentId"));
+  const householdIds = await householdIdsForUser(user.id);
+  const document = await prisma.document.findFirst({
+    where: { id: documentId, ...documentAccessWhere(user.id, householdIds) },
+    select: { id: true, folderId: true }
+  });
+  if (!document) throw new Error("Dokument nicht gefunden.");
+  await prisma.document.update({
+    where: { id: document.id },
+    data: { deletedAt: new Date(), deletedFromFolderId: document.folderId }
+  });
+  revalidatePath("/documents");
+  revalidatePath(`/documents/${document.id}`);
+  redirect("/documents");
 }
 
 export async function bulkDocumentAction(formData: FormData) {

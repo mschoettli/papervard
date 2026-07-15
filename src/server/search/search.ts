@@ -23,6 +23,8 @@ export type SearchFilters = {
   documentId?: string;
   limit?: number;
   offset?: number;
+  folderIds?: string[];
+  tagIds?: string[];
 };
 
 export async function hybridSearch(userId: string, query: string, filters: SearchFilters = {}) {
@@ -36,6 +38,8 @@ export async function hybridSearch(userId: string, query: string, filters: Searc
   const documentId = filters.documentId ?? null;
   const limit = Math.min(Math.max(filters.limit ?? 24, 1), 50);
   const offset = Math.max(filters.offset ?? 0, 0);
+  const folderIds = [...new Set(filters.folderIds ?? [])];
+  const tagIds = [...new Set(filters.tagIds ?? [])];
 
   const rows = await prisma.$queryRawUnsafe<RawSearchRow[]>(`
     WITH q AS (
@@ -61,8 +65,19 @@ export async function hybridSearch(userId: string, query: string, filters: Searc
       LEFT JOIN "TextChunk" c ON d.id = c."documentId"
       CROSS JOIN q
       WHERE d."indexStatus" = 'indexed'::"IndexStatus"
+        AND d."deletedAt" IS NULL
         AND ($3::int IS NULL OR d.year = $3::int)
         AND ($7::text IS NULL OR d.id = $7::text)
+        AND (cardinality($10::text[]) = 0 OR d."folderId" = ANY($10::text[]))
+        AND (
+          cardinality($11::text[]) = 0
+          OR (
+            SELECT COUNT(DISTINCT document_tag."tagId")
+            FROM "DocumentTag" document_tag
+            WHERE document_tag."documentId" = d.id
+              AND document_tag."tagId" = ANY($11::text[])
+          ) = cardinality($11::text[])
+        )
         AND (
           d."ownerUserId" = $4::text
           OR (d."visibility" = 'family'::"DocumentVisibility" AND d."householdId" = ANY($5::text[]))
@@ -94,7 +109,7 @@ export async function hybridSearch(userId: string, query: string, filters: Searc
     WHERE result_number = 1
     ORDER BY ((COALESCE(keyword_rank, 0) * 0.62) + (COALESCE(semantic_rank, 0) * 0.38)) DESC
     LIMIT $8::int OFFSET $9::int
-  `, cleanQuery, embedding, year, userId, householdIds, scope, documentId, limit, offset);
+  `, cleanQuery, embedding, year, userId, householdIds, scope, documentId, limit, offset, folderIds, tagIds);
 
   return {
     results: rows.map((row) => ({

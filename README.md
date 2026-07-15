@@ -1,6 +1,6 @@
 # Papervard
 
-Papervard is a Docker-ready family PDF library with private documents, optional family access, in-browser viewing, downloads, and local search across titles, filenames and PDF text.
+Papervard is a Docker-ready family PDF library with private documents, optional family access, nested folders, manual tags, recoverable deletion, in-browser viewing, downloads, and local search across titles, filenames and PDF text.
 
 ## Stack
 
@@ -32,8 +32,14 @@ The initial admin is configured through `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSW
 - Entering a four-digit year such as `2024` shows documents assigned to that year. The year filter can be used together with a text search.
 - Several PDFs can be selected or dragged into the file input at once. Each PDF may be up to 50 MB and a submission up to 75 MB.
 - A manually selected year remains fixed during later re-indexing.
+- Every document belongs to a folder. Uploads without an explicit destination are placed in the immutable private or family `Unsortiert` folder.
+- Folders can be nested, renamed and moved. Shared family folders can be managed by every family member; private folders remain visible only to their creator.
+- The global search covers every accessible document. A separate folder search includes the selected folder and all descendants.
+- Documents and folders support drag-and-drop plus form-based move controls for keyboard and touch use.
+- Manual household tags can be created, recolored, renamed, merged, deleted and combined as document filters. Papervard does not send document content to an AI tagging service.
+- Deleted documents and folders remain recoverable for 30 days. If the previous destination no longer exists, restored content goes to `Unsortiert`.
 
-Existing documents become family-visible when migration `000003_family_document_access` is deployed. New users automatically join the default family. The decision and security boundaries are recorded in [`docs/decisions/001-family-document-access.md`](docs/decisions/001-family-document-access.md).
+Existing documents become family-visible when migration `000003_family_document_access` is deployed and are assigned to `Unsortiert` by migration `000004_folders_tags_trash`. New users automatically join the default family and receive the required system folders. The access boundaries are recorded in [`docs/decisions/001-family-document-access.md`](docs/decisions/001-family-document-access.md); the folder, tag and trash design is recorded in [`docs/decisions/002-folders-tags-trash.md`](docs/decisions/002-folders-tags-trash.md).
 
 ## Docker
 

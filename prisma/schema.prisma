@@ -44,6 +44,9 @@ model User {
   savedSearches        SavedSearch[]
   householdMemberships HouseholdMember[]
   ownedDocuments       Document[]         @relation("DocumentOwner")
+  createdFolders       Folder[]           @relation("FolderCreator")
+  createdTags          Tag[]              @relation("TagCreator")
+  assignedDocumentTags DocumentTag[]      @relation("DocumentTagAssigner")
 }
 
 model Household {
@@ -53,6 +56,8 @@ model Household {
   updatedAt DateTime          @updatedAt
   members   HouseholdMember[]
   documents Document[]
+  folders   Folder[]
+  tags      Tag[]
 }
 
 model HouseholdMember {
@@ -84,18 +89,78 @@ model Document {
   ownerUserId  String
   householdId  String
   visibility   DocumentVisibility @default(private)
+  folderId     String
+  deletedAt    DateTime?
+  deletedFromFolderId String?
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
   chunks       TextChunk[]
   favorites    FavoriteDocument[]
   owner        User               @relation("DocumentOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   household    Household          @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  folder       Folder             @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  tags         DocumentTag[]
 
   @@unique([ownerUserId, checksum])
   @@index([ownerUserId])
   @@index([householdId, visibility])
   @@index([year])
   @@index([indexStatus])
+  @@index([folderId, deletedAt])
+  @@index([deletedAt])
+}
+
+model Folder {
+  id                  String             @id @default(cuid())
+  name                String
+  visibility          DocumentVisibility
+  isSystem            Boolean            @default(false)
+  createdByUserId     String
+  householdId         String
+  parentId            String?
+  deletedAt           DateTime?
+  deletedFromParentId String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  creator             User               @relation("FolderCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  household           Household          @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  parent              Folder?            @relation("FolderChildren", fields: [parentId], references: [id], onDelete: Restrict)
+  children            Folder[]           @relation("FolderChildren")
+  documents           Document[]
+
+  @@index([parentId, deletedAt])
+  @@index([createdByUserId, visibility, deletedAt])
+  @@index([householdId, visibility, deletedAt])
+}
+
+model Tag {
+  id              String        @id @default(cuid())
+  name            String
+  color           String        @default("#64748b")
+  householdId     String
+  createdByUserId String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  household       Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  creator         User          @relation("TagCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  documents       DocumentTag[]
+
+  @@unique([householdId, name])
+  @@index([createdByUserId])
+}
+
+model DocumentTag {
+  documentId      String
+  tagId           String
+  assignedByUserId String
+  createdAt       DateTime @default(now())
+  document        Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  tag             Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  assignedBy      User     @relation("DocumentTagAssigner", fields: [assignedByUserId], references: [id], onDelete: Cascade)
+
+  @@id([documentId, tagId])
+  @@index([tagId])
+  @@index([assignedByUserId])
 }
 
 model FavoriteDocument {
