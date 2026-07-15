@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type DragEvent, type FormEvent } from "react";
 import { FileUp, RotateCw, Upload } from "lucide-react";
 import { formatBytes } from "@/lib/utils";
 
@@ -30,6 +30,7 @@ type UploadSessionResponse = {
 
 export function ResumableUpload({ accept, folders }: { accept: string; folders: FolderOption[] }) {
   const [items, setItems] = useState<UploadItem[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const [visibility, setVisibility] = useState<"private" | "family">("private");
   const [folderId, setFolderId] = useState("");
   const [message, setMessage] = useState("");
@@ -40,15 +41,21 @@ export function ResumableUpload({ accept, folders }: { accept: string; folders: 
     setItems((current) => current.map((item) => item.id === id ? { ...item, ...update } : item));
   }
 
-  function selectFiles(files: FileList | null) {
+  function selectFiles(files: ArrayLike<File> | null) {
     if (!files) return;
     setItems(Array.from(files, (file) => ({
-      id: crypto.randomUUID(),
+      id: createUploadItemId(),
       file,
       progress: 0,
       status: "ready" as const
     })));
     setMessage("");
+  }
+
+  function handleDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setIsDragging(false);
+    selectFiles(event.dataTransfer.files);
   }
 
   async function sessionFor(item: UploadItem): Promise<UploadSessionResponse> {
@@ -200,10 +207,22 @@ export function ResumableUpload({ accept, folders }: { accept: string; folders: 
     <form onSubmit={submit} className="space-y-4">
       <div>
         <label htmlFor="resumable-files" className="block text-sm font-medium">Dateien auswählen</label>
-        <label htmlFor="resumable-files" className="mt-2 flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-primary/40 bg-white p-4 text-center hover:bg-muted/40">
+        <label
+          htmlFor="resumable-files"
+          data-upload-dropzone
+          onDragEnter={(event) => { event.preventDefault(); setIsDragging(true); }}
+          onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
+          onDragLeave={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsDragging(false);
+          }}
+          onDrop={handleDrop}
+          className={`mt-2 flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed p-4 text-center transition-colors ${
+            isDragging ? "border-primary bg-primary/10" : "border-primary/40 bg-white hover:bg-muted/40"
+          }`}
+        >
           <FileUp aria-hidden="true" size={24} />
           <span className="mt-2 text-sm font-medium">Dokumente, Bilder, E-Mails, E-Books oder DICOM</span>
-          <span className="mt-1 text-sm text-muted-foreground">Mehrfachauswahl möglich · Keine feste Dateigrößengrenze</span>
+          <span className="mt-1 text-sm text-muted-foreground">Auswählen oder hierher ziehen · Mehrfachauswahl möglich · Keine feste Dateigrößengrenze</span>
         </label>
         <input id="resumable-files" type="file" multiple accept={accept} className="sr-only" onChange={(event) => selectFiles(event.target.files)} />
       </div>
@@ -272,6 +291,14 @@ export function ResumableUpload({ accept, folders }: { accept: string; folders: 
 
 function resumeStorageKey(file: File) {
   return `papervard-upload:${file.name}:${file.size}:${file.lastModified}`;
+}
+
+let uploadItemSequence = 0;
+
+function createUploadItemId() {
+  if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
+  uploadItemSequence += 1;
+  return `upload-${Date.now().toString(36)}-${uploadItemSequence.toString(36)}`;
 }
 
 function uploadStatusLabel(status: UploadItem["status"]) {
