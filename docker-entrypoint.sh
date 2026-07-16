@@ -3,6 +3,9 @@ set -eu
 
 CONFIG_PATH="${PAPERVARD_CONFIG_PATH:-/config}"
 DATA_PATH="${PAPERVARD_DATA_PATH:-/data}"
+PAPERVARD_CONFIG_PATH="$CONFIG_PATH"
+PAPERVARD_DATA_PATH="$DATA_PATH"
+export PAPERVARD_CONFIG_PATH PAPERVARD_DATA_PATH
 mkdir -p "$CONFIG_PATH/secrets" "$DATA_PATH/blobs" "$DATA_PATH/previews" "$DATA_PATH/thumbnails" "$DATA_PATH/staging" "$DATA_PATH/library/Familie" "$DATA_PATH/library/Privat"
 chown -R nextjs:nodejs "$CONFIG_PATH/secrets" "$DATA_PATH/blobs" "$DATA_PATH/previews" "$DATA_PATH/thumbnails" "$DATA_PATH/staging" "$DATA_PATH/library"
 chmod 0700 "$CONFIG_PATH/secrets"

@@ -35,8 +35,10 @@ COPY package.json tsconfig.json ./
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/src ./src
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
-RUN ./node_modules/.bin/prisma generate \
+RUN mkdir -p /app/.next/cache \
+  && ./node_modules/.bin/prisma generate \
   && chmod +x ./docker-entrypoint.sh \
+  && chown -R nextjs:nodejs /app/.next/cache \
   && chown -R nextjs:nodejs /app/node_modules/.prisma /app/node_modules/@prisma/client
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 EXPOSE 3000
