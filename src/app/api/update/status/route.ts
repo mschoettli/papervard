@@ -14,6 +14,7 @@ export async function GET() {
     latestSha: status.latestSha,
     updateAvailable: status.updateAvailable,
     canTriggerUpdate: status.canTriggerUpdate,
+    managedExternally: status.managedExternally,
     statusLabel: status.statusLabel,
     error: status.error,
     verifiedCurrent: Boolean(status.currentSha && status.latestSha && status.currentSha === status.latestSha)

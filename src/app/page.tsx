@@ -38,7 +38,7 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen lg:flex">
-      <a href="#main-content" className="sr-only z-50 rounded-md bg-white px-4 py-2 text-sm font-medium shadow focus:not-sr-only focus:fixed focus:left-4 focus:top-4">
+      <a href="#main-content" className="sr-only z-50 rounded-md bg-surface px-4 py-2 text-sm font-medium shadow focus:not-sr-only focus:fixed focus:left-4 focus:top-4">
         Zum Inhalt springen
       </a>
       <AppNav user={user} />
@@ -56,7 +56,7 @@ export default async function HomePage() {
                 Dokumente öffnen
               </Link>
               {user.role === "admin" ? (
-                <Link href="/admin/uploads" className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-white px-4 text-sm font-medium hover:bg-muted">
+                <Link href="/admin/uploads" className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-surface px-4 text-sm font-medium hover:bg-muted">
                   <Upload size={18} />
                   Upload
                 </Link>
@@ -105,7 +105,7 @@ function DocumentSection({
         {action}
       </div>
       {documents.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-white p-8 text-center">
+        <div className="rounded-lg border border-dashed border-border bg-surface p-8 text-center">
           <p className="text-sm text-muted-foreground">{emptyText}</p>
         </div>
       ) : (
@@ -121,7 +121,7 @@ function DocumentSection({
 
 function DocumentCard({ document }: { document: DashboardDocument }) {
   return (
-    <article className="group flex min-h-[420px] flex-col rounded-lg border border-border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-md">
+    <article className="group flex min-h-[420px] flex-col rounded-lg border border-border bg-surface p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-md">
       <Link href={`/documents/${document.id}`} className="block focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
         <DocumentThumbnail documentId={document.id} title={document.title} />
       </Link>
@@ -136,7 +136,7 @@ function DocumentCard({ document }: { document: DashboardDocument }) {
       <div className="mt-5 flex items-center justify-between gap-3">
         <form action={toggleFavoriteDocumentAction}>
           <input type="hidden" name="documentId" value={document.id} />
-          <button className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-xs font-medium transition hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+          <button className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-surface px-3 text-xs font-medium transition hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
             <Heart size={15} className={document.favorites.length > 0 ? "fill-red-500 text-red-500" : ""} />
             {document.favorites.length > 0 ? "Favorit" : "Merken"}
           </button>
@@ -160,7 +160,7 @@ function DocumentCard({ document }: { document: DashboardDocument }) {
 
 function MetricCard({ icon, label, value, detail }: { icon: React.ReactNode; label: string; value: string; detail: string }) {
   return (
-    <article className="rounded-lg border border-border bg-white p-5">
+    <article className="rounded-lg border border-border bg-surface p-5">
       <div className="flex items-center justify-between text-muted-foreground">
         <span className="text-sm font-medium">{label}</span>
         {icon}

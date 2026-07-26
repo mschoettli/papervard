@@ -12,7 +12,7 @@ export function LoginForm() {
 
   return (
     <main className="grid min-h-screen bg-background lg:grid-cols-[1fr_440px]">
-      <section className="hidden min-h-screen flex-col justify-between border-r border-border bg-white p-10 lg:flex">
+      <section className="hidden min-h-screen flex-col justify-between border-r border-border bg-surface p-10 lg:flex">
         <div className="flex items-center gap-3">
           <Image src="/papervard-icon.png" alt="" width={48} height={48} className="size-12 rounded-lg shadow-sm" aria-hidden="true" priority />
           <div>
@@ -29,7 +29,7 @@ export function LoginForm() {
       </section>
 
       <section className="flex min-h-screen items-center justify-center p-6">
-        <form action={action} className="w-full max-w-sm rounded-lg border border-border bg-white p-6 shadow-sm">
+        <form action={action} className="w-full max-w-sm rounded-lg border border-border bg-surface p-6 shadow-sm">
           <div className="mb-6 flex items-center gap-3 lg:hidden">
             <Image
               src="/papervard-icon.png"

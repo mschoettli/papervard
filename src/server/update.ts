@@ -7,6 +7,7 @@ export type UpdateStatus = {
   latestUrl: string | null;
   updateAvailable: boolean;
   canTriggerUpdate: boolean;
+  managedExternally: boolean;
   statusLabel: string;
   error: string | null;
 };
@@ -37,14 +38,18 @@ export function currentRuntime() {
 
 function updateStatus(currentSha: string | null, latest: LatestCommit, error: string | null): UpdateStatus {
   const updateAvailable = Boolean(currentSha && latest.sha && currentSha !== latest.sha);
+  const managedExternally = process.env.PAPERVARD_UPDATE_MODE === "external";
 
   return {
     currentSha,
     latestSha: latest.sha,
     latestUrl: latest.url,
     updateAvailable,
-    canTriggerUpdate: updateAvailable || !currentSha || Boolean(error),
-    statusLabel: error
+    canTriggerUpdate: !managedExternally && (updateAvailable || !currentSha || Boolean(error)),
+    managedExternally,
+    statusLabel: managedExternally
+      ? "Update wird von Runvard verwaltet"
+      : error
       ? "Update-Status nicht pruefbar"
       : updateAvailable
         ? "Update verfuegbar"
@@ -125,6 +130,13 @@ export async function getUpdateStatus(): Promise<UpdateStatus> {
 }
 
 export async function triggerContainerUpdate() {
+  if (process.env.PAPERVARD_UPDATE_MODE === "external") {
+    return {
+      ok: false,
+      message: "Updates werden von Runvard verwaltet. Starte das Update im Runvard App-Store."
+    };
+  }
+
   const url = process.env.UPDATE_API_URL;
   const token = process.env.WATCHTOWER_HTTP_API_TOKEN;
 

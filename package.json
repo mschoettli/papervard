@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "worker": "tsx src/server/jobs/worker.ts",
+    "worker": "node --conditions=react-server --import tsx src/server/jobs/worker.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -29,6 +29,7 @@
     "prisma": "^5.22.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "server-only": "^0.0.1",
     "sharp": "^0.35.3",
     "tailwind-merge": "^2.5.5",
     "zod": "^3.24.1"

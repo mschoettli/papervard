@@ -18,12 +18,12 @@ export function CreateUserForm() {
     <form
       ref={formRef}
       action={action}
-      className="grid gap-3 rounded-lg border border-border bg-white p-4 lg:grid-cols-[1fr_1fr_150px_130px_auto]"
+      className="grid gap-3 rounded-lg border border-border bg-surface p-4 lg:grid-cols-[1fr_1fr_150px_130px_auto]"
     >
       <input name="name" required placeholder="Name" className="h-10 rounded-md border border-border px-3 text-sm" />
       <input name="email" required type="email" placeholder="E-Mail" className="h-10 rounded-md border border-border px-3 text-sm" />
       <input name="password" required type="password" minLength={10} placeholder="Passwort" className="h-10 rounded-md border border-border px-3 text-sm" />
-      <select name="role" defaultValue="user" className="h-10 rounded-md border border-border bg-white px-3 text-sm">
+      <select name="role" defaultValue="user" className="h-10 rounded-md border border-border bg-surface px-3 text-sm">
         <option value="user">Nutzer</option>
         <option value="admin">Admin</option>
       </select>

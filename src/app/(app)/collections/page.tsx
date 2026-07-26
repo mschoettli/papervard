@@ -27,7 +27,7 @@ export default async function CollectionsPage() {
       </header>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {collections.map((collection) => (
-          <Link key={collection.id} href={`/collections/${collection.id}`} className="rounded-xl border border-border bg-white p-5 shadow-sm transition-transform hover:-translate-y-0.5">
+          <Link key={collection.id} href={`/collections/${collection.id}`} className="rounded-xl border border-border bg-surface p-5 shadow-sm transition-transform hover:-translate-y-0.5">
             <div className="flex items-start gap-3">
               <span className="rounded-lg bg-amber-50 p-3 text-amber-800"><Layers3 aria-hidden="true" size={24} /></span>
               <div className="min-w-0"><h2 className="truncate font-semibold">{collection.name}</h2><p className="text-sm text-muted-foreground">{collection._count.items} Dateien · {collection.creator.name}</p></div>

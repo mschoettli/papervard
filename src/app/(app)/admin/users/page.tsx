@@ -14,7 +14,7 @@ export default async function UsersPage() {
         <p className="mt-1 text-sm text-muted-foreground">Konten erstellen, Rollen setzen und Zugänge deaktivieren.</p>
       </header>
       <CreateUserForm />
-      <div className="overflow-hidden rounded-lg border border-border bg-white">
+      <div className="overflow-hidden rounded-lg border border-border bg-surface">
         <table className="w-full min-w-[720px] text-sm">
           <thead className="bg-muted text-left text-xs uppercase text-muted-foreground">
             <tr>

@@ -49,7 +49,7 @@ export default async function UploadsPage() {
         <p className="mt-1 text-sm text-muted-foreground">Alle unterstützten Dateiformate wiederaufnehmbar hochladen und lokal verarbeiten.</p>
       </header>
 
-      <section className="rounded-lg border border-dashed border-primary/40 bg-white p-5" aria-labelledby="resumable-upload-heading">
+      <section className="rounded-lg border border-dashed border-primary/40 bg-surface p-5" aria-labelledby="resumable-upload-heading">
         <h2 id="resumable-upload-heading" className="mb-4 font-semibold">Neuer Upload</h2>
         <ResumableUpload accept={supportedUploadExtensions().join(",")} folders={folders} />
       </section>
@@ -63,13 +63,13 @@ export default async function UploadsPage() {
           <p className="mt-2 text-sm">Exakte Duplikate werden per Checksum übersprungen; ähnliche Dateinamen bitte kurz prüfen.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {duplicateNames.map((name) => (
-              <span key={name} className="rounded-md bg-white px-2 py-1 text-xs font-medium">{name}</span>
+              <span key={name} className="rounded-md bg-surface px-2 py-1 text-xs font-medium">{name}</span>
             ))}
           </div>
         </section>
       ) : null}
 
-      <section className="rounded-lg border border-border bg-white">
+      <section className="rounded-lg border border-border bg-surface">
         <div className="border-b border-border p-4">
           <h2 className="font-semibold">Indexierungswarteschlange</h2>
           <p className="mt-1 text-sm text-muted-foreground">Dokumente, die warten, laufen oder eine Nachbearbeitung brauchen.</p>
@@ -96,7 +96,7 @@ export default async function UploadsPage() {
         </div>
       </section>
 
-      <div className="overflow-hidden rounded-lg border border-border bg-white">
+      <div className="overflow-hidden rounded-lg border border-border bg-surface">
         <table className="w-full min-w-[680px] text-sm">
           <thead className="bg-muted text-left text-xs uppercase text-muted-foreground">
             <tr>

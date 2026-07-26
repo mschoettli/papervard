@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { ArrowLeft, Download, FilePenLine, Folder, Heart, Lock, RotateCw, Search, Tags, Trash2, Users } from "lucide-react";
+import { ArrowLeft, Download, FilePenLine, Folder, Heart, Lock, RotateCw, Search, Trash2, Users } from "lucide-react";
 import { notFound } from "next/navigation";
 import { Button } from "@/components/button";
 import { DocumentPreview } from "@/components/document-preview";
+import { TagSelectionModal } from "@/components/library-modals";
 import { StatusPill } from "@/components/status-pill";
 import { formatBytes } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
@@ -110,7 +111,7 @@ export default async function DocumentPage({
         </div>
         <div className="flex flex-wrap gap-2">
           {canEdit ? (
-            <Link href={`/documents/${document.id}/edit`} className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-white px-4 text-sm font-medium hover:bg-muted">
+            <Link href={`/documents/${document.id}/edit`} className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-surface px-4 text-sm font-medium hover:bg-muted">
               <FilePenLine aria-hidden="true" size={18} /> Bearbeiten
             </Link>
           ) : null}
@@ -130,7 +131,7 @@ export default async function DocumentPage({
 
       {document.indexError ? <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-700">{document.indexError}</p> : null}
 
-      <section aria-labelledby="search-in-document" className="rounded-lg border border-border bg-white p-4">
+      <section aria-labelledby="search-in-document" className="rounded-lg border border-border bg-surface p-4">
         <h2 id="search-in-document" className="font-semibold">In diesem Dokument suchen</h2>
         <form className="mt-3 flex flex-col gap-2 sm:flex-row">
           <label className="relative min-w-0 flex-1">
@@ -171,7 +172,7 @@ export default async function DocumentPage({
           />
         </div>
         <aside className="space-y-4">
-          <section className="rounded-lg border border-border bg-white p-4">
+          <section className="rounded-lg border border-border bg-surface p-4">
             <h2 className="font-semibold">Dokumentdetails</h2>
             <dl className="mt-4 space-y-3 text-sm">
               <Info label="Jahr" value={String(document.year)} />
@@ -183,7 +184,7 @@ export default async function DocumentPage({
             </dl>
           </section>
 
-          <section className="rounded-lg border border-border bg-white p-4">
+          <section className="rounded-lg border border-border bg-surface p-4">
             <h2 className="font-semibold">Gemeinsame Notizen</h2>
             <form action={createDocumentNoteAction} className="mt-3">
               <input type="hidden" name="documentId" value={document.id} />
@@ -213,7 +214,7 @@ export default async function DocumentPage({
             </div>
           </section>
 
-          <section className="rounded-lg border border-border bg-white p-4">
+          <section className="rounded-lg border border-border bg-surface p-4">
             <h2 className="font-semibold">Versionen</h2>
             <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
               {document.versions.map((version) => (
@@ -238,41 +239,45 @@ export default async function DocumentPage({
             </div>
           </section>
 
-          <section className="rounded-lg border border-border bg-white p-4">
+          <section className="rounded-lg border border-border bg-surface p-4">
             <h2 className="flex items-center gap-2 font-semibold"><Folder aria-hidden="true" size={17} /> Ablage</h2>
             <form action={moveDocumentAction} className="mt-3">
               <input type="hidden" name="documentId" value={document.id} />
               <label className="text-sm font-medium" htmlFor="document-folder">Ordner</label>
-              <select id="document-folder" name="targetFolderId" defaultValue={document.folderId} className="mt-1 h-10 w-full rounded-md border border-border bg-white px-3 text-sm">
+              <select id="document-folder" name="targetFolderId" defaultValue={document.folderId} className="mt-1 h-10 w-full rounded-md border border-border bg-surface px-3 text-sm">
                 {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
               </select>
               <button className="mt-2 h-10 w-full rounded-md bg-muted text-sm font-medium">Ordner speichern</button>
             </form>
           </section>
 
-          <form action={updateDocumentTagsAction} className="rounded-lg border border-border bg-white p-4">
-            <input type="hidden" name="documentId" value={document.id} />
-            <fieldset>
-              <legend className="flex items-center gap-2 font-semibold"><Tags aria-hidden="true" size={17} /> Tags</legend>
-              <div className="mt-3 max-h-48 space-y-1 overflow-y-auto">
-                {tags.map((tag) => (
-                  <label key={tag.id} className="flex min-h-10 items-center gap-2 rounded-md px-2 text-sm hover:bg-muted">
-                    <input type="checkbox" name="tagId" value={tag.id} defaultChecked={document.tags.some((item) => item.tagId === tag.id)} />
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: tag.color }} />
-                    {tag.name}
-                  </label>
-                ))}
-                {tags.length === 0 ? <p className="text-sm text-muted-foreground">Noch keine Tags angelegt.</p> : null}
-              </div>
-            </fieldset>
-            <button className="mt-3 h-10 w-full rounded-md bg-muted text-sm font-medium">Tags speichern</button>
-          </form>
+          <section className="rounded-lg border border-border bg-surface p-4">
+            <h2 className="font-semibold">Tags</h2>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {document.tags.map(({ tag }) => (
+                <span key={tag.id} className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-xs">
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: tag.color }} /> {tag.name}
+                </span>
+              ))}
+              {document.tags.length === 0 ? <p className="text-sm text-muted-foreground">Keine Tags ausgewählt.</p> : null}
+            </div>
+            <div className="mt-3">
+              <TagSelectionModal
+                subjectId={document.id}
+                subjectName={document.title}
+                subjectType="document"
+                tags={tags}
+                selectedTagIds={document.tags.map((item) => item.tagId)}
+                updateAction={updateDocumentTagsAction}
+              />
+            </div>
+          </section>
 
           {document.ownerUserId === user.id ? (
-            <form action={updateDocumentVisibilityAction} className="rounded-lg border border-border bg-white p-4">
+            <form action={updateDocumentVisibilityAction} className="rounded-lg border border-border bg-surface p-4">
               <input type="hidden" name="documentId" value={document.id} />
               <label className="text-sm font-medium" htmlFor="visibility">Zugriff</label>
-              <select id="visibility" name="visibility" defaultValue={document.visibility} className="mt-2 h-10 w-full rounded-md border border-border bg-white px-3 text-sm">
+              <select id="visibility" name="visibility" defaultValue={document.visibility} className="mt-2 h-10 w-full rounded-md border border-border bg-surface px-3 text-sm">
                 <option value="private">Nur ich</option>
                 <option value="family">Meine Familie</option>
               </select>
@@ -282,7 +287,7 @@ export default async function DocumentPage({
           ) : null}
 
           {user.role === "admin" ? (
-            <form action={reindexDocumentAction} className="rounded-lg border border-border bg-white p-4">
+            <form action={reindexDocumentAction} className="rounded-lg border border-border bg-surface p-4">
               <input type="hidden" name="id" value={document.id} />
               <Button variant="secondary" className="w-full">
                 <RotateCw aria-hidden="true" size={17} />

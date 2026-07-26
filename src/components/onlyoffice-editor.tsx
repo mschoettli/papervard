@@ -8,6 +8,14 @@ type OnlyOfficeEditorProps = {
   config: Record<string, unknown>;
 };
 
+type BrowserLocation = Pick<Location, "protocol" | "hostname">;
+
+export function resolveOnlyOfficeServerUrl(serverUrl: string, location: BrowserLocation) {
+  const automatic = serverUrl.match(/^auto:(\d+)$/);
+  if (!automatic) return serverUrl;
+  return `${location.protocol}//${location.hostname}:${automatic[1]}`;
+}
+
 declare global {
   interface Window {
     DocsAPI?: { DocEditor: new (elementId: string, config: Record<string, unknown>) => { destroyEditor?: () => void } };
@@ -20,6 +28,13 @@ export function OnlyOfficeEditor({ serverUrl, config }: OnlyOfficeEditorProps) {
   const editor = useRef<{ destroyEditor?: () => void } | null>(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
+  const [resolvedServerUrl, setResolvedServerUrl] = useState(
+    serverUrl.startsWith("auto:") ? "" : serverUrl
+  );
+
+  useEffect(() => {
+    setResolvedServerUrl(resolveOnlyOfficeServerUrl(serverUrl, window.location));
+  }, [serverUrl]);
 
   useEffect(() => {
     if (!ready || !window.DocsAPI) return;
@@ -32,14 +47,16 @@ export function OnlyOfficeEditor({ serverUrl, config }: OnlyOfficeEditorProps) {
   }, [config, elementId, ready]);
 
   return (
-    <div className="relative min-h-[70vh] overflow-hidden rounded-lg border border-border bg-white">
-      <Script
-        src={`${serverUrl.replace(/\/$/, "")}/web-apps/apps/api/documents/api.js`}
-        strategy="afterInteractive"
-        onLoad={() => setReady(true)}
-        onError={() => setError("Der lokale ONLYOFFICE-Dienst ist nicht erreichbar.")}
-      />
-      {!ready && !error ? <p className="p-5 text-sm text-muted-foreground" role="status">Lokaler Editor wird geladen …</p> : null}
+    <div className="relative min-h-[70vh] overflow-hidden rounded-lg border border-border bg-surface">
+      {resolvedServerUrl ? (
+        <Script
+          src={`${resolvedServerUrl.replace(/\/$/, "")}/web-apps/apps/api/documents/api.js`}
+          strategy="afterInteractive"
+          onLoad={() => setReady(true)}
+          onError={() => setError("Der lokale ONLYOFFICE-Dienst ist nicht erreichbar.")}
+        />
+      ) : null}
+      {(!resolvedServerUrl || !ready) && !error ? <p className="p-5 text-sm text-muted-foreground" role="status">Lokaler Editor wird geladen …</p> : null}
       {error ? <p className="m-5 rounded-md bg-red-50 p-4 text-sm text-red-700" role="alert">{error}</p> : null}
       <div id={elementId} className="h-[calc(100vh-12rem)] min-h-[680px] w-full" />
     </div>

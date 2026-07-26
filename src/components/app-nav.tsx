@@ -38,7 +38,7 @@ export function AppNav({ user, updateAvailable = false }: { user: AppUser; updat
   }, [user.role]);
 
   return (
-    <aside className="border-b border-border bg-white/95 lg:flex lg:min-h-screen lg:w-72 lg:flex-col lg:border-b-0 lg:border-r">
+    <aside className="border-b border-border bg-surface/95 lg:flex lg:min-h-screen lg:w-72 lg:flex-col lg:border-b-0 lg:border-r">
       <div className="flex h-16 items-center border-b border-border px-5">
         <Link href="/documents" className="flex items-center gap-3 text-lg font-semibold tracking-normal">
           <Image

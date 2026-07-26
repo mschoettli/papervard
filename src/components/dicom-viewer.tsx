@@ -123,9 +123,9 @@ export function DicomViewer({ documentId, seriesId, instanceIds }: DicomViewerPr
     <div className="flex min-h-[680px] flex-col bg-neutral-950 text-white">
       <div className="flex flex-wrap gap-2 border-b border-white/15 p-2" role="toolbar" aria-label="DICOM-Werkzeuge">
         {toolChoices.map(([name, label]) => (
-          <button key={name} type="button" onClick={() => activate(name)} aria-pressed={activeTool === name} className={`min-h-11 rounded px-3 text-sm ${activeTool === name ? "bg-blue-600" : "bg-white/10 hover:bg-white/20"}`}>{label}</button>
+          <button key={name} type="button" onClick={() => activate(name)} aria-pressed={activeTool === name} className={`min-h-11 rounded px-3 text-sm ${activeTool === name ? "bg-blue-600" : "bg-surface/10 hover:bg-surface/20"}`}>{label}</button>
         ))}
-        <button type="button" onClick={() => setCine((value) => !value)} aria-pressed={cine} className={`min-h-11 rounded px-3 text-sm ${cine ? "bg-emerald-600" : "bg-white/10 hover:bg-white/20"}`}>Cine</button>
+        <button type="button" onClick={() => setCine((value) => !value)} aria-pressed={cine} className={`min-h-11 rounded px-3 text-sm ${cine ? "bg-emerald-600" : "bg-surface/10 hover:bg-surface/20"}`}>Cine</button>
       </div>
       {error ? <p role="alert" className="m-4 rounded bg-red-950 p-4 text-sm text-red-100">{error}</p> : null}
       <div ref={elementRef} className="min-h-[620px] flex-1 touch-none" onContextMenu={(event) => event.preventDefault()} />

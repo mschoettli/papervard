@@ -7,6 +7,30 @@ afterEach(() => {
 });
 
 describe("update status", () => {
+  it("leaves update ownership with Runvard in externally managed installations", async () => {
+    vi.stubEnv("APP_GIT_SHA", "old1234567890");
+    vi.stubEnv("PAPERVARD_UPDATE_MODE", "external");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          sha: "new1234567890",
+          html_url: "https://github.com/mschoettli/papervard/commit/new1234567890"
+        })
+      )
+    );
+
+    const { getUpdateStatus } = await import("@/server/update");
+    const status = await getUpdateStatus();
+
+    expect(status).toMatchObject({
+      updateAvailable: true,
+      canTriggerUpdate: false,
+      managedExternally: true,
+      statusLabel: "Update wird von Runvard verwaltet"
+    });
+  });
+
   it("keeps manual updates available when the installed image version is unknown", async () => {
     vi.stubEnv("APP_GIT_SHA", "unknown");
     vi.stubGlobal(
@@ -88,6 +112,21 @@ describe("update status", () => {
 });
 
 describe("triggerContainerUpdate", () => {
+  it("does not contact Watchtower when Runvard owns updates", async () => {
+    vi.stubEnv("PAPERVARD_UPDATE_MODE", "external");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { triggerContainerUpdate } = await import("@/server/update");
+    const result = await triggerContainerUpdate();
+
+    expect(result).toEqual({
+      ok: false,
+      message: "Updates werden von Runvard verwaltet. Starte das Update im Runvard App-Store."
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("returns a visible error when the Watchtower API cannot be reached", async () => {
     vi.stubEnv("UPDATE_API_URL", "http://watchtower:8080/v1/update");
     vi.stubEnv("WATCHTOWER_HTTP_API_TOKEN", "secret");

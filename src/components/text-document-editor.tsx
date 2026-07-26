@@ -48,7 +48,7 @@ export function TextDocumentEditor({ documentId, title, baseVersionId }: { docum
   }
 
   return (
-    <section className="overflow-hidden rounded-lg border border-border bg-white">
+    <section className="overflow-hidden rounded-lg border border-border bg-surface">
       <div className="flex flex-col gap-2 border-b border-border p-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">UTF-8-Texteditor · jede Speicherung erzeugt eine neue Inhaltsversion</p>
         <button type="button" onClick={save} disabled={loading || saving} className="min-h-11 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">

@@ -22,6 +22,14 @@ const optionalIdSchema = z.preprocess(
 );
 const folderNameSchema = z.string().transform((value) => value.trim().replace(/\s+/g, " ")).pipe(z.string().min(1).max(80));
 const visibilitySchema = z.enum(["private", "family"]);
+const folderIconSchema = z.preprocess(
+  (value) => typeof value === "string" && value ? value : "folder",
+  z.enum(["folder", "archive", "briefcase", "heart", "home", "receipt", "shield", "star"])
+);
+const optionalFolderIconSchema = z.preprocess(
+  (value) => typeof value === "string" && value ? value : undefined,
+  folderIconSchema.optional()
+);
 
 async function userContext() {
   const user = await requireUser();
@@ -39,10 +47,12 @@ export async function createFolderAction(formData: FormData) {
   const { user, householdIds, householdId } = await userContext();
   const parsed = z.object({
     name: folderNameSchema,
+    icon: folderIconSchema,
     visibility: visibilitySchema,
     parentId: optionalIdSchema
   }).parse({
     name: formData.get("name"),
+    icon: formData.get("icon"),
     visibility: formData.get("visibility"),
     parentId: formData.get("parentId")
   });
@@ -74,6 +84,7 @@ export async function createFolderAction(formData: FormData) {
   await prisma.folder.create({
     data: {
       name: parsed.name,
+      icon: parsed.icon,
       visibility: parsed.visibility,
       createdByUserId: user.id,
       householdId: parent?.householdId ?? householdId,
@@ -85,9 +96,10 @@ export async function createFolderAction(formData: FormData) {
 
 export async function renameFolderAction(formData: FormData) {
   const { user, householdIds } = await userContext();
-  const parsed = z.object({ id: idSchema, name: folderNameSchema }).parse({
+  const parsed = z.object({ id: idSchema, name: folderNameSchema, icon: optionalFolderIconSchema }).parse({
     id: formData.get("folderId"),
-    name: formData.get("name")
+    name: formData.get("name"),
+    icon: formData.get("icon")
   });
   const folder = await prisma.folder.findFirst({
     where: { id: parsed.id, ...folderAccessWhere(user.id, householdIds, user.role === "admin") }
@@ -109,7 +121,10 @@ export async function renameFolderAction(formData: FormData) {
     select: { id: true }
   });
   if (duplicate) throw new Error("In diesem Bereich gibt es bereits einen Ordner mit diesem Namen.");
-  await prisma.folder.update({ where: { id: folder.id }, data: { name: parsed.name } });
+  await prisma.folder.update({
+    where: { id: folder.id },
+    data: { name: parsed.name, ...(parsed.icon ? { icon: parsed.icon } : {}) }
+  });
   revalidateLibrary();
 }
 

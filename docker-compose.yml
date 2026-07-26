@@ -9,6 +9,7 @@ x-papervard-environment: &papervard-environment
   ONLYOFFICE_INTERNAL_URL: http://onlyoffice
   ONLYOFFICE_JWT_SECRET: ${ONLYOFFICE_JWT_SECRET:?ONLYOFFICE_JWT_SECRET in .env setzen}
   NEXT_PUBLIC_ONLYOFFICE_URL: ${ONLYOFFICE_BROWSER_URL:-http://localhost:8081}
+  PAPERVARD_UPDATE_MODE: ${PAPERVARD_UPDATE_MODE:-internal}
   AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
   OCR_LANGUAGES: ${OCR_LANGUAGES:-deu+eng+fra+ita+spa}
   TZ: ${TZ:-Europe/Zurich}

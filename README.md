@@ -60,7 +60,7 @@ Voraussetzungen sind Docker Engine mit Compose sowie ein ARM64- oder x86-64-Syst
    mkdir -p config data
    ```
 
-2. In `.env` mindestens sichere Werte für `POSTGRES_PASSWORD`, `SEED_ADMIN_PASSWORD`, `ONLYOFFICE_JWT_SECRET` und `SMB_ADMIN_PASSWORD` setzen. Zufallswerte lassen sich zum Beispiel mit `openssl rand -hex 32` erzeugen.
+2. In `.env` mindestens sichere Werte für `POSTGRES_PASSWORD`, `SEED_ADMIN_PASSWORD`, `ONLYOFFICE_JWT_SECRET` und `SMB_ADMIN_PASSWORD` setzen. Die vollständige Schlüsselübersicht und passende Erzeugungsbefehle stehen im Abschnitt [Schlüssel, Passwörter und Token](#schlüssel-passwörter-und-token).
 
 3. Stack bauen und starten:
 
@@ -71,6 +71,50 @@ Voraussetzungen sind Docker Engine mit Compose sowie ein ARM64- oder x86-64-Syst
 4. Papervard unter `http://localhost:3000` öffnen. Der App-Container spielt Migrationen ein und legt den ersten Administrator aus `SEED_ADMIN_EMAIL` und `SEED_ADMIN_PASSWORD` idempotent an.
 
 Die ONLYOFFICE-Browseradresse wird mit `ONLYOFFICE_BROWSER_URL` konfiguriert. Bei Zugriff von einem anderen Rechner muss sie auf eine vom Browser erreichbare Adresse zeigen, zum Beispiel `http://papervard.lan:8081`.
+
+Wird Papervard von Runvard installiert, kann `ONLYOFFICE_BROWSER_URL` den Wert `auto:<Port>` verwenden. Papervard übernimmt dann Protokoll und Hostnamen aus der geöffneten Browseradresse. Mit `PAPERVARD_UPDATE_MODE=external` bleibt die Versionsprüfung sichtbar, während Installation und Neustart neuer Images bewusst dem Runvard App-Store gehören.
+
+### Schlüssel, Passwörter und Token
+
+Für unabhängige zufällige Hex-Werte jeweils einen neuen Befehl ausführen:
+
+```bash
+openssl rand -hex 32
+```
+
+Der DICOM-Schlüssel muss dagegen Base64-kodiert genau 32 Byte enthalten:
+
+```bash
+openssl rand -base64 32
+```
+
+Jeder Wert darf nur für einen Zweck verwendet werden. Echte Schlüssel gehören ausschließlich in `.env` oder in die automatisch angelegten Dateien unter `config/secrets`, niemals in Git, Screenshots, Support-Nachrichten oder die README.
+
+| Variable | Zweck und Erzeugung | Verhalten bei Änderung |
+|---|---|---|
+| `AUTH_SECRET` | Signiert Anmeldesitzungen. Kann leer bleiben; Papervard erzeugt dann automatisch einen Hex-Schlüssel in `config/secrets/auth-secret`. Manuell: `openssl rand -hex 32`. | Eine Änderung meldet alle Benutzer ab und macht vorhandene Sitzungscookies ungültig. |
+| `PAPERVARD_SIGNING_SECRET` | Signiert kurzlebige Datei-, Vorschau- und Editor-Tokens. Kann leer bleiben; automatische Ablage in `config/secrets/signing-secret`. Manuell: `openssl rand -hex 32`. Der Wert muss mindestens 24 Zeichen lang sein. | Bereits ausgegebene signierte Links und Editor-Tokens werden ungültig. Gespeicherte Dokumente bleiben erhalten. |
+| `DICOM_FIELD_KEY` | Verschlüsselt Patientenname, Geburtsdatum und Patient-ID mit AES-256-GCM. Kann leer bleiben; automatische Ablage in `config/secrets/dicom-field-key`. Manuell ausschließlich mit `openssl rand -base64 32`. | **Nach dem ersten DICOM-Import niemals ohne geplante Datenmigration ändern.** Andernfalls können vorhandene verschlüsselte Patientenmetadaten nicht mehr entschlüsselt werden. |
+| `POSTGRES_PASSWORD` | Passwort des PostgreSQL-Benutzers `papervard`. Manuell mit `openssl rand -hex 32` erzeugen. | Bei einer bestehenden Datenbank nicht nur in `.env` ändern. Das Datenbankpasswort muss kontrolliert in PostgreSQL und anschließend in `.env` gemeinsam geändert werden, sonst kann Papervard die Datenbank nicht mehr öffnen. |
+| `SEED_ADMIN_PASSWORD` | Startpasswort für `SEED_ADMIN_EMAIL`. Ein langes individuelles Passwort oder `openssl rand -hex 32` verwenden. | Ändert ein bestehendes Administratorkonto nicht automatisch. Ein bewusster Reset erfolgt einmalig mit `docker compose run --rm -e SEED_ADMIN_RESET_PASSWORD=true app npm run db:seed`; danach den temporären Container wieder entfernen lassen. |
+| `ONLYOFFICE_JWT_SECRET` | Gemeinsames JWT-Geheimnis zwischen Papervard und ONLYOFFICE. Manuell mit `openssl rand -hex 32` erzeugen; mindestens 24 Zeichen. | Muss in beiden Diensten identisch sein. Nach einer Änderung `app`, `worker` und `onlyoffice` gemeinsam neu erstellen; offene Editor-Sitzungen werden ungültig. |
+| `SMB_ADMIN_PASSWORD` | Passwort des alleinigen SMB-Benutzers `admin`. Ein langes individuelles Passwort oder `openssl rand -hex 32` verwenden. | Nach einer Änderung den Samba-Container neu erstellen und gespeicherte Anmeldedaten auf den Clients aktualisieren. Dokumentdaten werden nicht verändert. |
+| `WATCHTOWER_HTTP_API_TOKEN` | Optionaler Bearer-Token für das Update-Profil. Mit `openssl rand -hex 32` erzeugen. Papervard und Watchtower erhalten über Compose denselben Wert. | Nach einer Änderung `app` und `watchtower` neu erstellen. Alte API-Aufrufe werden abgewiesen. Den Watchtower-Port nicht ungeschützt ins LAN oder Internet veröffentlichen. |
+
+Beispielstruktur ohne echte Werte:
+
+```env
+AUTH_SECRET=""
+PAPERVARD_SIGNING_SECRET=""
+DICOM_FIELD_KEY=""
+POSTGRES_PASSWORD="hier-einen-eigenen-hex-wert-eintragen"
+SEED_ADMIN_PASSWORD="hier-ein-eigenes-startpasswort-eintragen"
+ONLYOFFICE_JWT_SECRET="hier-einen-eigenen-hex-wert-eintragen"
+SMB_ADMIN_PASSWORD="hier-ein-eigenes-passwort-eintragen"
+WATCHTOWER_HTTP_API_TOKEN="hier-einen-eigenen-hex-wert-eintragen"
+```
+
+Leere Werte sind nur bei `AUTH_SECRET`, `PAPERVARD_SIGNING_SECRET` und `DICOM_FIELD_KEY` vorgesehen. Der Entrypoint erzeugt diese drei Werte beim ersten Start und verwendet die vorhandenen Dateien bei späteren Starts erneut. Wurde einer dieser Werte stattdessen manuell in `.env` gesetzt, darf er später nicht einfach geleert werden: Papervard würde sonst einen anderen automatischen Schlüssel erzeugen. Vor jeder Schlüsseländerung müssen mindestens `.env`, `config` und `data` gemeinsam gesichert werden.
 
 ### Genau zwei Speicherwurzeln
 

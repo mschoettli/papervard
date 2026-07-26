@@ -18,7 +18,7 @@ export function DocumentPreview(props: DocumentPreviewProps) {
     return <div className="flex min-h-[60vh] items-center justify-center bg-neutral-950 p-3"><img src={source} alt={props.title} className="max-h-[78vh] max-w-full object-contain" /></div>;
   }
   if (props.format === "pdf") {
-    return <iframe title={`PDF: ${props.title}`} src={`${source}${props.page ? `#page=${props.page}` : ""}`} className="h-[72vh] min-h-[560px] w-full bg-white" />;
+    return <iframe title={`PDF: ${props.title}`} src={`${source}${props.page ? `#page=${props.page}` : ""}`} className="h-[72vh] min-h-[560px] w-full bg-surface" />;
   }
   if (props.family === "dicom") {
     return <iframe title={`DICOM: ${props.title}`} src={`/documents/${props.id}/dicom`} className="h-[76vh] min-h-[620px] w-full bg-black" />;
@@ -29,7 +29,7 @@ export function DocumentPreview(props: DocumentPreviewProps) {
       : props.family === "archive" ? <Archive aria-hidden="true" size={28} />
         : <FileText aria-hidden="true" size={28} />;
   return (
-    <div className="min-h-[60vh] bg-white p-5 sm:p-8">
+    <div className="min-h-[60vh] bg-surface p-5 sm:p-8">
       <div className="mx-auto max-w-3xl">
         <div className="flex items-center gap-3 text-muted-foreground">{icon}<span className="text-sm font-medium">Lokale Vorschau</span></div>
         {props.canEdit ? (

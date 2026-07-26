@@ -36,7 +36,7 @@ export function ImageDocumentEditor({ documentId, title, baseVersionId }: { docu
   }
 
   return (
-    <section className="overflow-hidden rounded-lg border border-border bg-white">
+    <section className="overflow-hidden rounded-lg border border-border bg-surface">
       <div className="flex flex-wrap gap-2 border-b border-border p-3" role="toolbar" aria-label="Bild bearbeiten">
         <EditButton disabled={busy} onClick={() => apply({ rotate: 270 })}>Links drehen</EditButton>
         <EditButton disabled={busy} onClick={() => apply({ rotate: 90 })}>Rechts drehen</EditButton>

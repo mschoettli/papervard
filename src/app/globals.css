@@ -3,14 +3,29 @@
 @tailwind utilities;
 
 :root {
-  --background: 210 20% 98%;
-  --foreground: 220 18% 15%;
-  --muted: 210 18% 94%;
-  --muted-foreground: 218 10% 42%;
-  --border: 214 18% 84%;
-  --primary: 174 64% 26%;
+  --background: 36 30% 97%;
+  --surface: 35 33% 100%;
+  --foreground: 220 16% 16%;
+  --muted: 32 20% 92%;
+  --muted-foreground: 220 9% 40%;
+  --border: 30 16% 82%;
+  --primary: 14 60% 39%;
   --primary-foreground: 0 0% 100%;
   --destructive: 0 68% 44%;
+  color-scheme: light;
+}
+
+.dark {
+  --background: 222 21% 10%;
+  --surface: 222 18% 14%;
+  --foreground: 35 18% 92%;
+  --muted: 220 15% 19%;
+  --muted-foreground: 218 10% 66%;
+  --border: 220 13% 28%;
+  --primary: 14 63% 46%;
+  --primary-foreground: 0 0% 100%;
+  --destructive: 0 62% 54%;
+  color-scheme: dark;
 }
 
 * {
@@ -20,7 +35,7 @@
 body {
   margin: 0;
   background:
-    linear-gradient(180deg, hsl(204 28% 97%) 0%, hsl(var(--background)) 42%),
+    radial-gradient(circle at 85% -20%, hsl(var(--primary) / 0.08), transparent 38rem),
     hsl(var(--background));
   color: hsl(var(--foreground));
   font-family: "Avenir Next", Avenir, "Segoe UI", sans-serif;
@@ -41,6 +56,67 @@ input,
 select,
 textarea {
   font: inherit;
+  color: hsl(var(--foreground));
+}
+
+dialog {
+  color: hsl(var(--foreground));
+}
+
+dialog::backdrop {
+  background: hsl(220 24% 8% / 0.58);
+  backdrop-filter: blur(3px);
+}
+
+:focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+}
+
+.dark .bg-red-50 {
+  background-color: rgb(69 10 10 / 0.55);
+}
+
+.dark .bg-amber-50 {
+  background-color: rgb(69 38 5 / 0.5);
+}
+
+.dark .bg-blue-50 {
+  background-color: rgb(23 37 84 / 0.55);
+}
+
+.dark .bg-emerald-50 {
+  background-color: rgb(2 44 34 / 0.55);
+}
+
+.dark .border-red-200,
+.dark .border-amber-200,
+.dark .border-blue-200,
+.dark .border-emerald-200 {
+  border-color: hsl(var(--border));
+}
+
+.dark .text-red-700,
+.dark .text-red-800,
+.dark .text-red-900 {
+  color: rgb(254 202 202);
+}
+
+.dark .text-amber-700,
+.dark .text-amber-800,
+.dark .text-amber-900 {
+  color: rgb(253 230 138);
+}
+
+.dark .text-blue-700,
+.dark .text-blue-800,
+.dark .text-blue-900 {
+  color: rgb(191 219 254);
+}
+
+.dark .text-emerald-700,
+.dark .text-green-700 {
+  color: rgb(167 243 208);
 }
 
 ::selection {
