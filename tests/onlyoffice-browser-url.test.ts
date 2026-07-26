@@ -16,4 +16,3 @@ describe("ONLYOFFICE browser URL", () => {
     })).toBe("https://office.example.test");
   });
 });
-
