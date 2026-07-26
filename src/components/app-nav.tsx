@@ -15,6 +15,8 @@ type AppUser = {
   role: "admin" | "user";
 };
 
+const updateCheckIntervalMs = 60_000;
+
 export function AppNav({ user, updateAvailable = false }: { user: AppUser; updateAvailable?: boolean }) {
   const [showUpdateBadge, setShowUpdateBadge] = useState(updateAvailable);
 
@@ -22,19 +24,30 @@ export function AppNav({ user, updateAvailable = false }: { user: AppUser; updat
     if (user.role !== "admin") return;
 
     const controller = new AbortController();
-    fetch("/api/update/status", {
-      cache: "no-store",
-      credentials: "same-origin",
-      headers: { "Cache-Control": "no-cache" },
-      signal: controller.signal
-    })
-      .then((response) => response.ok ? response.json() : null)
-      .then((status: { updateAvailable?: boolean } | null) => {
-        if (status) setShowUpdateBadge(Boolean(status.updateAvailable));
-      })
-      .catch(() => undefined);
 
-    return () => controller.abort();
+    function refreshUpdateStatus() {
+      fetch("/api/update/status", {
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { "Cache-Control": "no-cache" },
+        signal: controller.signal
+      })
+        .then((response) => response.ok ? response.json() : null)
+        .then((status: { updateAvailable?: boolean } | null) => {
+          if (status) setShowUpdateBadge(Boolean(status.updateAvailable));
+        })
+        .catch(() => undefined);
+    }
+
+    refreshUpdateStatus();
+    window.addEventListener("focus", refreshUpdateStatus);
+    const refreshTimer = window.setInterval(refreshUpdateStatus, updateCheckIntervalMs);
+
+    return () => {
+      controller.abort();
+      window.removeEventListener("focus", refreshUpdateStatus);
+      window.clearInterval(refreshTimer);
+    };
   }, [user.role]);
 
   return (
