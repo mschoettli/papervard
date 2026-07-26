@@ -31,8 +31,33 @@ describe("update status", () => {
     });
   });
 
+  it("defaults missing update ownership to the external app store", async () => {
+    vi.stubEnv("APP_GIT_SHA", "old1234567890");
+    vi.stubEnv("PAPERVARD_UPDATE_MODE", "");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          sha: "new1234567890",
+          html_url: "https://github.com/mschoettli/papervard/commit/new1234567890"
+        })
+      )
+    );
+
+    const { getUpdateStatus } = await import("@/server/update");
+    const status = await getUpdateStatus();
+
+    expect(status).toMatchObject({
+      updateAvailable: true,
+      canTriggerUpdate: false,
+      managedExternally: true,
+      statusLabel: "Update wird von Runvard verwaltet"
+    });
+  });
+
   it("keeps manual updates available when the installed image version is unknown", async () => {
     vi.stubEnv("APP_GIT_SHA", "unknown");
+    vi.stubEnv("PAPERVARD_UPDATE_MODE", "internal");
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -57,6 +82,7 @@ describe("update status", () => {
 
   it("disables manual updates only when the installed version matches GitHub", async () => {
     vi.stubEnv("APP_GIT_SHA", "abc1234567890");
+    vi.stubEnv("PAPERVARD_UPDATE_MODE", "internal");
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -79,6 +105,7 @@ describe("update status", () => {
 
   it("falls back to the public commit feed when the GitHub API is rate limited", async () => {
     vi.stubEnv("APP_GIT_SHA", "4caf8de1234567890");
+    vi.stubEnv("PAPERVARD_UPDATE_MODE", "internal");
     vi.stubGlobal(
       "fetch",
       vi
@@ -127,7 +154,23 @@ describe("triggerContainerUpdate", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("does not contact Watchtower when update ownership is missing", async () => {
+    vi.stubEnv("PAPERVARD_UPDATE_MODE", "");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { triggerContainerUpdate } = await import("@/server/update");
+    const result = await triggerContainerUpdate();
+
+    expect(result).toEqual({
+      ok: false,
+      message: "Updates werden von Runvard verwaltet. Starte das Update im Runvard App-Store."
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("returns a visible error when the Watchtower API cannot be reached", async () => {
+    vi.stubEnv("PAPERVARD_UPDATE_MODE", "internal");
     vi.stubEnv("UPDATE_API_URL", "http://watchtower:8080/v1/update");
     vi.stubEnv("WATCHTOWER_HTTP_API_TOKEN", "secret");
     vi.stubGlobal(
@@ -147,6 +190,7 @@ describe("triggerContainerUpdate", () => {
   });
 
   it("explains when the Watchtower API takes longer than the update timeout", async () => {
+    vi.stubEnv("PAPERVARD_UPDATE_MODE", "internal");
     vi.stubEnv("UPDATE_API_URL", "http://watchtower:8080/v1/update");
     vi.stubEnv("WATCHTOWER_HTTP_API_TOKEN", "secret");
     vi.stubGlobal(
@@ -167,6 +211,7 @@ describe("triggerContainerUpdate", () => {
 
   it("returns after Watchtower has accepted the update request so the client can verify the new version", async () => {
     vi.useFakeTimers();
+    vi.stubEnv("PAPERVARD_UPDATE_MODE", "internal");
     vi.stubEnv("UPDATE_API_URL", "http://watchtower:8080/v1/update");
     vi.stubEnv("WATCHTOWER_HTTP_API_TOKEN", "secret");
 

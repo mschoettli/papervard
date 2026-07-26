@@ -36,9 +36,13 @@ export function currentRuntime() {
   };
 }
 
+function isExternallyManaged() {
+  return process.env.PAPERVARD_UPDATE_MODE !== "internal";
+}
+
 function updateStatus(currentSha: string | null, latest: LatestCommit, error: string | null): UpdateStatus {
   const updateAvailable = Boolean(currentSha && latest.sha && currentSha !== latest.sha);
-  const managedExternally = process.env.PAPERVARD_UPDATE_MODE === "external";
+  const managedExternally = isExternallyManaged();
 
   return {
     currentSha,
@@ -130,7 +134,7 @@ export async function getUpdateStatus(): Promise<UpdateStatus> {
 }
 
 export async function triggerContainerUpdate() {
-  if (process.env.PAPERVARD_UPDATE_MODE === "external") {
+  if (isExternallyManaged()) {
     return {
       ok: false,
       message: "Updates werden von Runvard verwaltet. Starte das Update im Runvard App-Store."
