@@ -32,6 +32,13 @@ export function moveWouldCreateCycle(folders: FolderNode[], folderId: string, ta
   return collectDescendantFolderIds(folders, folderId).includes(targetParentId);
 }
 
+export function reorderSiblingFolderIds(ids: string[], folderId: string, beforeFolderId?: string) {
+  const ordered = ids.filter((id) => id !== folderId);
+  const beforeIndex = beforeFolderId ? ordered.indexOf(beforeFolderId) : -1;
+  ordered.splice(beforeIndex >= 0 ? beforeIndex : ordered.length, 0, folderId);
+  return ordered;
+}
+
 export function trashExpiresAt(deletedAt: Date) {
   return new Date(deletedAt.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
 }

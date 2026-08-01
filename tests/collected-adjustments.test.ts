@@ -16,19 +16,20 @@ describe("collected document-library adjustments", () => {
 
   it("opens tag management and document tag selection in dialogs", async () => {
     const documentsPage = await source("src/app/(app)/documents/page.tsx");
+    const foldersPage = await source("src/app/(app)/folders/page.tsx");
     const modals = await source("src/components/library-modals.tsx");
 
-    expect(documentsPage).toContain("TagManagerModal");
+    expect(foldersPage).toContain("TagManagerModal");
     expect(documentsPage).toContain("TagSelectionModal");
     expect(modals).toContain("Tag-Sammlung");
     expect(modals).toContain("onSubmit={() => dialogRef.current?.close()}");
   });
 
   it("offers folder editing and deletion through a three-dot menu", async () => {
-    const documentsPage = await source("src/app/(app)/documents/page.tsx");
+    const folderBrowser = await source("src/components/folder-browser.tsx");
     const modals = await source("src/components/library-modals.tsx");
 
-    expect(documentsPage).toContain("FolderActionsMenu");
+    expect(folderBrowser).toContain("FolderActionsMenu");
     expect(modals).toContain("Ordner bearbeiten");
     expect(modals).toContain("icon");
   });

@@ -5,7 +5,7 @@ import Image from "next/image";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Archive, Home, Layers3, LogOut, Settings, Upload, Users } from "lucide-react";
+import { Archive, Folder, Home, Layers3, LogOut, Settings, Upload, Users } from "lucide-react";
 import { logoutAction } from "@/server/actions/auth";
 import { cn } from "@/lib/utils";
 
@@ -69,6 +69,7 @@ export function AppNav({ user, updateAvailable = false }: { user: AppUser; updat
       <nav aria-label="Hauptnavigation" className="flex gap-1 overflow-x-auto p-3 lg:block lg:space-y-6">
         <div className="flex gap-1 lg:block lg:space-y-1">
           <NavItem href="/" icon={<Home size={18} />} label="Dashboard" />
+          <NavItem href="/folders" icon={<Folder size={18} />} label="Ordner" />
           <NavItem href="/documents" icon={<Archive size={18} />} label="Dokumente" />
           <NavItem href="/collections" icon={<Layers3 size={18} />} label="Sammlungen" />
         </div>

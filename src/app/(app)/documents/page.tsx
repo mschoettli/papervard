@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type React from "react";
+import { redirect } from "next/navigation";
 import {
   Archive,
   ChevronRight,
@@ -19,14 +19,7 @@ import {
 } from "lucide-react";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { DocumentThumbnail } from "@/components/document-thumbnail";
-import { FolderGlyph } from "@/components/folder-icon";
-import { DraggableLibraryItem, FolderDropTarget } from "@/components/library-drag-drop";
-import {
-  CreateFolderModal,
-  FolderActionsMenu,
-  TagManagerModal,
-  TagSelectionModal
-} from "@/components/library-modals";
+import { TagSelectionModal } from "@/components/library-modals";
 import { ResumableUpload } from "@/components/resumable-upload";
 import { formatBytes } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
@@ -36,20 +29,11 @@ import {
   trashDocumentAction
 } from "@/server/actions/documents";
 import {
-  createFolderAction,
-  createTagAction,
-  deleteTagAction,
   emptyTrashAction,
-  mergeTagAction,
-  moveFolderAction,
   permanentlyDeleteTrashItemAction,
   purgeExpiredTrash,
-  renameFolderAction,
   restoreTrashItemAction,
-  trashFolderAction,
-  updateDocumentTagsAction,
-  updateFolderTagsAction,
-  updateTagAction
+  updateDocumentTagsAction
 } from "@/server/actions/library";
 import { requireUser } from "@/server/auth";
 import { documentScopeWhere, householdIdsForUser, type DocumentScope } from "@/server/documents/access";
@@ -91,8 +75,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
   const params = await searchParams;
   const trashMode = params.trash === "1";
   const globalQuery = (params.q ?? "").trim();
-  const folderQuery = (params.fq ?? "").trim();
-  const query = globalQuery || folderQuery;
+  const query = globalQuery;
   const scope = parseScope(params.scope);
   const selectedYear = parseYear(params.year);
   const queryYear = !selectedYear && /^\d{4}$/.test(query) ? parseYear(query) : undefined;
@@ -121,7 +104,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
         _count: { select: { documents: { where: { deletedAt: null } } } },
         tags: { include: { tag: true } }
       },
-      orderBy: [{ isSystem: "desc" }, { name: "asc" }]
+      orderBy: [{ isSystem: "desc" }, { position: "asc" }, { name: "asc" }]
     }),
     prisma.tag.findMany({
       where: { householdId: { in: householdIds } },
@@ -131,6 +114,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
   ]);
 
   const currentFolder = params.folder ? folders.find((folder) => folder.id === params.folder) : undefined;
+  if (params.folder && !currentFolder) redirect("/folders");
   const recursiveFolderIds = currentFolder
     ? collectDescendantFolderIds(folders.map(({ id, parentId }) => ({ id, parentId })), currentFolder.id)
     : [];
@@ -139,7 +123,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
     AND: [
       scopeWhere,
       activeYear ? { year: activeYear } : {},
-      currentFolder ? { folderId: currentFolder.id } : {},
+      currentFolder ? { folderId: { in: recursiveFolderIds } } : {},
       ...tagConditions
     ]
   };
@@ -171,7 +155,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
           isAdmin,
           year: activeYear,
           scope,
-          folderIds: folderQuery && currentFolder ? recursiveFolderIds : [],
+          folderIds: currentFolder ? recursiveFolderIds : [],
           tagIds: selectedTagIds,
           limit: PAGE_SIZE,
           offset
@@ -210,7 +194,6 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
 
   const total = textQuery ? searchResult.total : listResult.total;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const childFolders = folders.filter((folder) => folder.parentId === (currentFolder?.id ?? null));
   const breadcrumbs = currentFolder ? buildBreadcrumbs(folders, currentFolder.id) : [];
 
   return (
@@ -236,117 +219,53 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
         <>
           <GlobalSearch query={globalQuery} scope={scope} />
 
-          <div className="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
-            <aside className="space-y-4 lg:sticky lg:top-5 lg:self-start">
-              <section className="rounded-2xl border border-border bg-surface p-3">
-                <div className="flex items-center justify-between px-2 py-2">
-                  <h2 className="text-sm font-semibold">Ordner</h2>
-                  <span className="tabular-nums text-xs text-muted-foreground">{folders.length}</span>
+          {query ? (
+            <section className="space-y-5" aria-labelledby="search-results-heading">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h2 id="search-results-heading" className="font-display text-2xl font-semibold">Suchergebnisse für „{query}“</h2>
+                  <p aria-live="polite" className="mt-1 text-sm text-muted-foreground"><span className="tabular-nums font-medium text-foreground">{total}</span> Treffer</p>
                 </div>
-                <nav aria-label="Ordnernavigation" className="space-y-1">
-                  <FolderNavLink href={queryHref(params, { folder: undefined, fq: undefined })} active={!currentFolder} label="Alle Dokumente" icon={<Archive size={17} />} />
-                  {flattenFolders(folders).map(({ folder, depth }) => (
-                    <FolderNavLink
-                      key={folder.id}
-                      href={queryHref(params, { folder: folder.id, fq: undefined, page: undefined })}
-                      active={currentFolder?.id === folder.id}
-                      label={folder.isSystem ? `${folder.name} – ${folder.visibility === "private" ? "Privat" : "Familie"}` : folder.name}
-                      depth={depth}
-                      icon={folder.visibility === "private" ? <Lock size={15} /> : <FolderGlyph icon={folder.icon} size={17} />}
-                    />
-                  ))}
-                </nav>
-              </section>
-            </aside>
-
-            <main className="min-w-0 space-y-5">
-              <section aria-label="Bibliotheksaktionen" className="flex flex-wrap gap-2">
-                <CreateFolderModal
-                  folders={folders}
-                  defaultParentId={currentFolder?.id}
-                  defaultVisibility={currentFolder?.visibility ?? "private"}
-                  createAction={createFolderAction}
-                />
-                <TagManagerModal
-                  tags={tags}
-                  createAction={createTagAction}
-                  updateAction={updateTagAction}
-                  mergeAction={mergeTagAction}
-                  deleteAction={deleteTagAction}
-                />
-                {currentFolder ? (
-                  <TagSelectionModal
-                    subjectId={currentFolder.id}
-                    subjectName={currentFolder.name}
-                    subjectType="folder"
-                    tags={tags}
-                    selectedTagIds={currentFolder.tags.map((item) => item.tagId)}
-                    updateAction={updateFolderTagsAction}
-                  />
-                ) : null}
-              </section>
-
+                <Link href="/documents" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-4 text-sm font-medium hover:bg-muted">Suche zurücksetzen</Link>
+              </div>
+              <DocumentResults total={total} query={query} textQuery={textQuery} searchResults={searchResult.results} documents={listResult.documents} folders={folders} tags={tags} currentFolderId={currentFolder?.id} />
+              <Pagination page={page} totalPages={totalPages} params={params} />
+            </section>
+          ) : (
+            <div className="space-y-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <nav aria-label="Ordnerpfad" className="flex min-w-0 items-center gap-1 overflow-x-auto text-sm">
-                  <Link href="/documents" className="shrink-0 text-muted-foreground hover:text-foreground">Dokumente</Link>
-                  {breadcrumbs.map((folder) => (
-                    <span key={folder.id} className="flex shrink-0 items-center gap-1">
-                      <ChevronRight aria-hidden="true" size={14} className="text-muted-foreground" />
-                      <Link href={queryHref(params, { folder: folder.id, fq: undefined })} className={folder.id === currentFolder?.id ? "font-semibold" : "text-muted-foreground hover:text-foreground"}>{folder.name}</Link>
-                    </span>
-                  ))}
-                </nav>
                 <nav aria-label="Dokumentbereich" className="flex gap-1 overflow-x-auto">
                   <ScopeLink label="Alle" value="all" current={scope} params={params} />
                   <ScopeLink label="Meine Dokumente" value="mine" current={scope} params={params} />
                   <ScopeLink label="Familie" value="family" current={scope} params={params} />
                   <ScopeLink label="Favoriten" value="favorites" current={scope} params={params} />
                 </nav>
+                <Link href="/folders" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-4 text-sm font-medium hover:bg-muted">Ordner wechseln</Link>
               </div>
 
-              {currentFolder ? <FolderSearch folder={currentFolder} query={folderQuery} params={params} /> : null}
+              {currentFolder ? (
+                <section className="rounded-2xl border border-primary/15 bg-primary/5 p-4" aria-labelledby="folder-context-heading">
+                  <nav aria-label="Ausgewählter Ordner" className="flex min-w-0 items-center gap-1 overflow-x-auto text-sm text-muted-foreground">
+                    {breadcrumbs.map((folder, index) => <span key={folder.id} className="flex shrink-0 items-center gap-1">{index > 0 ? <ChevronRight size={14} /> : null}{folder.name}</span>)}
+                  </nav>
+                  <h2 id="folder-context-heading" className="mt-2 font-display text-xl font-semibold">{currentFolder.name}</h2>
+                  <p className="mt-1 text-sm text-muted-foreground"><span className="tabular-nums font-medium text-foreground">{total}</span> Dokumente inklusive Unterordner</p>
+                </section>
+              ) : null}
 
-              <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_360px]">
+              <section className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
                 <FilterPanel params={params} query={query} scope={scope} years={years} activeYear={activeYear} sort={sort} tags={tags} selectedTagIds={selectedTagIds} />
                 <UploadPanel folders={folders} />
               </section>
 
-              {childFolders.length > 0 ? (
-                <section aria-labelledby="subfolders-heading">
-                  <div className="mb-3 flex items-center justify-between">
-                    <h2 id="subfolders-heading" className="font-display text-xl font-semibold">{currentFolder ? "Unterordner" : "Ordner"}</h2>
-                    <span className="tabular-nums text-sm text-muted-foreground">{childFolders.length}</span>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {childFolders.map((folder) => <FolderCard key={folder.id} folder={folder} folders={folders} params={params} />)}
-                  </div>
-                </section>
-              ) : null}
-
               <div aria-live="polite" className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
-                <p><span className="tabular-nums font-medium text-foreground">{total}</span> {total === 1 ? "Dokument" : "Dokumente"}{query ? ` für „${query}“` : ""}</p>
+                <p><span className="tabular-nums font-medium text-foreground">{total}</span> {total === 1 ? "Dokument" : "Dokumente"}</p>
                 {activeYear ? <p>Jahr: {activeYear}</p> : null}
               </div>
-
-              <DocumentResults
-                total={total}
-                query={query}
-                textQuery={textQuery}
-                searchResults={searchResult.results}
-                documents={listResult.documents}
-                folders={folders}
-                tags={tags}
-              />
-
-              {totalPages > 1 ? (
-                <nav aria-label="Seitennavigation" className="flex items-center justify-center gap-3">
-                  {page > 1 ? <Link className="rounded-lg bg-surface px-4 py-2 text-sm font-medium shadow-sm hover:bg-muted" href={pageHref(params, page - 1)}>Zurück</Link> : null}
-                  <span className="tabular-nums text-sm text-muted-foreground">Seite {page} von {totalPages}</span>
-                  {page < totalPages ? <Link className="rounded-lg bg-surface px-4 py-2 text-sm font-medium shadow-sm hover:bg-muted" href={pageHref(params, page + 1)}>Weiter</Link> : null}
-                </nav>
-              ) : null}
-            </main>
-          </div>
+              <DocumentResults total={total} query={query} textQuery={textQuery} searchResults={searchResult.results} documents={listResult.documents} folders={folders} tags={tags} currentFolderId={currentFolder?.id} />
+              <Pagination page={page} totalPages={totalPages} params={params} />
+            </div>
+          )}
         </>
       )}
     </div>
@@ -369,24 +288,6 @@ function GlobalSearch({ query, scope }: { query: string; scope: DocumentScope })
         </button>
       </form>
       <p className="mt-2 text-xs text-muted-foreground">Durchsucht Titel, Dateiname, Jahr und den erkannten PDF-Text in allen zugänglichen Ordnern.</p>
-    </section>
-  );
-}
-
-function FolderSearch({ folder, query, params }: { folder: { id: string; name: string }; query: string; params: DocumentsSearchParams }) {
-  return (
-    <section aria-labelledby="folder-search-title" className="rounded-2xl border border-primary/15 bg-primary/5 p-4">
-      <h2 id="folder-search-title" className="text-sm font-semibold">In „{folder.name}“ und allen Unterordnern suchen</h2>
-      <form className="mt-3 flex flex-col gap-2 sm:flex-row">
-        <input type="hidden" name="folder" value={folder.id} />
-        {params.scope ? <input type="hidden" name="scope" value={params.scope} /> : null}
-        <label className="relative min-w-0 flex-1">
-          <span className="sr-only">Diesen Ordner durchsuchen</span>
-          <Search aria-hidden="true" size={18} className="pointer-events-none absolute left-3 top-3 text-muted-foreground" />
-          <input name="fq" type="search" defaultValue={query} placeholder="Diesen Ordner durchsuchen …" className="h-11 w-full rounded-lg border border-primary/15 bg-surface pl-10 pr-3" />
-        </label>
-        <button className="min-h-11 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-transform active:scale-[0.96]">Ordner durchsuchen</button>
-      </form>
     </section>
   );
 }
@@ -431,7 +332,7 @@ function FilterPanel({ params, query, scope, years, activeYear, sort, tags, sele
                 const selected = selectedTagIds.includes(tag.id);
                 const nextTags = selected ? selectedTagIds.filter((id) => id !== tag.id) : [...selectedTagIds, tag.id];
                 return (
-                  <Link key={tag.id} href={queryHref(params, { tags: nextTags.length ? nextTags.join(",") : undefined, page: undefined })} className={`flex min-h-10 items-center gap-2 rounded-full px-3 text-sm ${selected ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+                  <Link key={tag.id} href={queryHref(params, { tags: nextTags.length ? nextTags.join(",") : undefined, page: undefined })} className={`flex min-h-11 items-center gap-2 rounded-full px-3 text-sm ${selected ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
                     <span className="sr-only">{selected ? "Ausgewählt: " : ""}</span><span className="h-2.5 w-2.5 rounded-full shadow-[0_0_0_1px_rgba(0,0,0,0.1)]" style={{ backgroundColor: tag.color }} /> {tag.name}
                   </Link>
                 );
@@ -463,42 +364,7 @@ function UploadPanel({ folders }: { folders: Array<{ id: string; name: string; p
   );
 }
 
-function FolderCard({ folder, folders, params }: {
-  folder: { id: string; name: string; icon: string; parentId: string | null; visibility: "private" | "family"; isSystem: boolean; _count: { documents: number } };
-  folders: Array<{ id: string; name: string; parentId: string | null; visibility: "private" | "family" }>;
-  params: DocumentsSearchParams;
-}) {
-  return (
-    <FolderDropTarget folderId={folder.id} label={folder.name}>
-      <DraggableLibraryItem type="folder" id={folder.id} label={folder.name}>
-        <article className="group rounded-2xl border border-border bg-surface p-4 transition-[border-color,transform] hover:-translate-y-0.5 hover:border-primary/35">
-          <div className="flex items-start gap-3">
-            <Link href={queryHref(params, { folder: folder.id, fq: undefined, page: undefined })} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
-              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                {folder.isSystem ? <Archive aria-hidden="true" size={23} /> : <FolderGlyph icon={folder.icon} size={24} />}
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate font-semibold">{folder.name}</span>
-                <span className="mt-0.5 block text-xs text-muted-foreground"><span className="tabular-nums">{folder._count.documents}</span> Dokumente · {folder.visibility === "private" ? "Nur ich" : "Familie"}</span>
-              </span>
-            </Link>
-            {!folder.isSystem ? (
-              <FolderActionsMenu
-                folder={folder}
-                folders={folders}
-                renameAction={renameFolderAction}
-                moveAction={moveFolderAction}
-                trashAction={trashFolderAction}
-              />
-            ) : null}
-          </div>
-        </article>
-      </DraggableLibraryItem>
-    </FolderDropTarget>
-  );
-}
-
-function DocumentResults({ total, query, textQuery, searchResults, documents, folders, tags }: {
+function DocumentResults({ total, query, textQuery, searchResults, documents, folders, tags, currentFolderId }: {
   total: number;
   query: string;
   textQuery: string;
@@ -506,13 +372,14 @@ function DocumentResults({ total, query, textQuery, searchResults, documents, fo
   documents: DocumentCard[];
   folders: Array<{ id: string; name: string; parentId: string | null; visibility: "private" | "family" }>;
   tags: Array<{ id: string; name: string; color: string }>;
+  currentFolderId?: string;
 }) {
   if (total === 0) {
     return (
       <section className="rounded-2xl border border-dashed border-border bg-surface/70 p-10 text-center">
         <FolderOpen aria-hidden="true" size={34} className="mx-auto text-muted-foreground" />
         <h2 className="mt-3 font-display text-xl font-semibold">{query ? "Keine passenden Dokumente" : "Hier liegen noch keine Dokumente"}</h2>
-        <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">{query ? "Versuche einen kürzeren Suchbegriff oder entferne einzelne Filter." : "Lade PDFs hoch oder verschiebe Dokumente per Drag-and-drop in diesen Bereich."}</p>
+        <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">{query ? "Ändere den Suchbegriff oder setze die Suche zurück." : "Lade Dateien hoch oder wähle einen anderen Ordner."}</p>
       </section>
     );
   }
@@ -527,7 +394,7 @@ function DocumentResults({ total, query, textQuery, searchResults, documents, fo
                 <p className="mt-1 text-xs text-muted-foreground">{result.year} · Treffer auf Seite {result.page}</p>
                 <p className="mt-3 text-sm leading-6">{result.excerpt}</p>
               </div>
-              <Link href={`/documents/${result.documentId}?page=${result.page}&q=${encodeURIComponent(textQuery)}`} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-muted px-3 text-sm font-medium"><Eye size={17} /> Öffnen</Link>
+                  <Link href={`/documents/${result.documentId}?page=${result.page}&q=${encodeURIComponent(textQuery)}`} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-muted px-3 text-sm font-medium"><Eye size={17} /> Öffnen</Link>
             </div>
           </article>
         ))}
@@ -537,8 +404,7 @@ function DocumentResults({ total, query, textQuery, searchResults, documents, fo
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
       {documents.map((document) => (
-        <DraggableLibraryItem key={document.id} type="document" id={document.id} label={document.title} className="h-full">
-          <article className="group flex h-full min-h-[440px] flex-col rounded-2xl bg-surface p-4 shadow-[0_1px_0_rgba(20,40,35,0.06),0_12px_32px_rgba(20,40,35,0.07)] transition-[box-shadow,transform] hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(20,40,35,0.12)]">
+        <article key={document.id} className="group flex h-full min-h-[390px] flex-col rounded-2xl bg-surface p-4 shadow-[0_1px_0_rgba(20,40,35,0.06),0_12px_32px_rgba(20,40,35,0.07)] transition-[box-shadow,transform] hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(20,40,35,0.12)]">
             <Link href={`/documents/${document.id}`} className="block rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
               <DocumentThumbnail documentId={document.id} title={document.title} />
             </Link>
@@ -547,7 +413,7 @@ function DocumentResults({ total, query, textQuery, searchResults, documents, fo
                 <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 font-medium">
                   {document.visibility === "private" ? <Lock size={12} /> : <Users size={12} />}{document.visibility === "private" ? "Nur ich" : "Familie"}
                 </span>
-                <span className="truncate text-muted-foreground">{document.folder.name}</span>
+                <span className="truncate text-muted-foreground">{relativeFolderPath(folders, currentFolderId, document.folderId)}</span>
               </div>
               <h2 className="mt-2 line-clamp-2 break-words text-sm font-semibold leading-5">{document.title}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{document.year} · {formatBytes(document.size)}</p>
@@ -558,12 +424,12 @@ function DocumentResults({ total, query, textQuery, searchResults, documents, fo
               ) : null}
             </div>
             <details className="mt-3 border-t border-border/70 pt-2">
-              <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 text-xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden"><MoreHorizontal size={16} /> Ablegen und Tags</summary>
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden"><MoreHorizontal size={16} /> Ablegen und Tags</summary>
               <div className="grid gap-3 pt-2">
                 <form action={moveDocumentAction} className="flex gap-2">
                   <input type="hidden" name="documentId" value={document.id} />
                   <FolderSelect name="targetFolderId" folders={folders.filter((folder) => folder.visibility === document.visibility)} defaultValue={document.folderId} compact />
-                  <button className="min-h-10 rounded-lg bg-muted px-3 text-xs font-medium">Verschieben</button>
+                  <button className="min-h-11 rounded-lg bg-muted px-3 text-xs font-medium">Verschieben</button>
                 </form>
                 <TagSelectionModal
                   subjectId={document.id}
@@ -576,22 +442,21 @@ function DocumentResults({ total, query, textQuery, searchResults, documents, fo
                 />
                 <form action={trashDocumentAction}>
                   <input type="hidden" name="documentId" value={document.id} />
-                  <button className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-red-50 px-3 text-xs font-medium text-red-700"><Trash2 size={15} /> In Papierkorb</button>
+                  <button className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-red-50 px-3 text-xs font-medium text-red-700"><Trash2 size={15} /> In Papierkorb</button>
                 </form>
               </div>
             </details>
             <div className="mt-auto grid grid-cols-3 gap-2 pt-4">
               <form action={toggleFavoriteDocumentAction}>
                 <input type="hidden" name="documentId" value={document.id} />
-                <button aria-label={document.favorites.length > 0 ? "Favorit entfernen" : "Als Favorit merken"} className="flex min-h-10 w-full items-center justify-center rounded-lg bg-muted">
+                <button aria-label={document.favorites.length > 0 ? "Favorit entfernen" : "Als Favorit merken"} className="flex min-h-11 w-full items-center justify-center rounded-lg bg-muted">
                   <Heart size={16} className={document.favorites.length > 0 ? "fill-red-500 text-red-500" : ""} />
                 </button>
               </form>
-              <Link href={`/documents/${document.id}`} className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-muted text-xs font-medium"><Eye size={16} /> Ansehen</Link>
-              <a href={`/api/documents/${document.id}/download`} className="inline-flex min-h-10 items-center justify-center rounded-lg bg-muted" aria-label={`${document.title} herunterladen`}><Download size={16} /></a>
+              <Link href={`/documents/${document.id}`} className="inline-flex min-h-11 items-center justify-center gap-1 rounded-lg bg-muted text-xs font-medium"><Eye size={16} /> Ansehen</Link>
+              <a href={`/api/documents/${document.id}/download`} className="inline-flex min-h-11 items-center justify-center rounded-lg bg-muted" aria-label={`${document.title} herunterladen`}><Download size={16} /></a>
             </div>
-          </article>
-        </DraggableLibraryItem>
+        </article>
       ))}
     </div>
   );
@@ -635,7 +500,7 @@ function TrashCard({ type, id, title, deletedAt }: { type: "document" | "folder"
       <div className="mt-4 grid grid-cols-2 gap-2">
         <form action={restoreTrashItemAction}>
           <input type="hidden" name="type" value={type} /><input type="hidden" name="id" value={id} />
-          <button className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-muted px-3 text-xs font-medium"><RotateCcw size={15} /> Wiederherstellen</button>
+          <button className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-muted px-3 text-xs font-medium"><RotateCcw size={15} /> Wiederherstellen</button>
         </form>
         <form action={permanentlyDeleteTrashItemAction}>
           <input type="hidden" name="type" value={type} /><input type="hidden" name="id" value={id} />
@@ -656,7 +521,7 @@ function FolderSelect({ folders, name, id, defaultValue, includeRoot = false, in
   compact?: boolean;
 }) {
   return (
-    <select id={id} name={name} defaultValue={defaultValue ?? ""} className={`${compact ? "h-10 min-w-0 flex-1 text-xs" : "h-11 w-full text-sm"} rounded-lg border border-border bg-surface px-3`}>
+    <select id={id} name={name} defaultValue={defaultValue ?? ""} className={`${compact ? "h-11 min-w-0 flex-1 text-xs" : "h-11 w-full text-sm"} rounded-lg border border-border bg-surface px-3`}>
       {includeUnsortedPlaceholder ? <option value="">Automatisch nach „Unsortiert“</option> : null}
       {includeRoot ? <option value="">Oberste Ebene</option> : null}
       {flattenFolders(folders).map(({ folder, depth }) => <option key={folder.id} value={folder.id}>{folder.visibility === "private" ? "Privat" : "Familie"} · {"— ".repeat(depth)}{folder.name}</option>)}
@@ -664,14 +529,25 @@ function FolderSelect({ folders, name, id, defaultValue, includeRoot = false, in
   );
 }
 
-function FolderNavLink({ href, active, label, icon, depth = 0 }: { href: string; active: boolean; label: string; icon: React.ReactNode; depth?: number }) {
-  return (
-    <Link href={href} aria-current={active ? "page" : undefined} style={{ paddingLeft: `${0.75 + depth * 0.85}rem` }} className={`flex min-h-10 items-center gap-2 rounded-lg pr-3 text-sm transition-[background-color,color] ${active ? "bg-primary font-medium text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>{icon}<span className="truncate">{label}</span></Link>
-  );
-}
-
 function TagChip({ tag }: { tag: { name: string; color: string } }) {
   return <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-[11px] font-medium"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: tag.color }} />{tag.name}</span>;
+}
+
+function relativeFolderPath<T extends { id: string; name: string; parentId: string | null }>(folders: T[], rootFolderId: string | undefined, folderId: string) {
+  const path = buildBreadcrumbs(folders, folderId);
+  const rootIndex = rootFolderId ? path.findIndex((folder) => folder.id === rootFolderId) : -1;
+  return (rootIndex >= 0 ? path.slice(rootIndex) : path).map((folder) => folder.name).join(" › ");
+}
+
+function Pagination({ page, totalPages, params }: { page: number; totalPages: number; params: DocumentsSearchParams }) {
+  if (totalPages <= 1) return null;
+  return (
+    <nav aria-label="Seitennavigation" className="flex items-center justify-center gap-3">
+      {page > 1 ? <Link className="inline-flex min-h-11 items-center rounded-lg bg-surface px-4 py-2 text-sm font-medium shadow-sm hover:bg-muted" href={pageHref(params, page - 1)}>Zurück</Link> : null}
+      <span className="tabular-nums text-sm text-muted-foreground">Seite {page} von {totalPages}</span>
+      {page < totalPages ? <Link className="inline-flex min-h-11 items-center rounded-lg bg-surface px-4 py-2 text-sm font-medium shadow-sm hover:bg-muted" href={pageHref(params, page + 1)}>Weiter</Link> : null}
+    </nav>
+  );
 }
 
 function parseScope(value?: string): DocumentScope {
@@ -698,7 +574,7 @@ function pageHref(params: DocumentsSearchParams, page: number) {
 
 function ScopeLink({ label, value, current, params }: { label: string; value: DocumentScope; current: DocumentScope; params: DocumentsSearchParams }) {
   const active = value === current;
-  return <Link href={queryHref(params, { scope: value === "all" ? undefined : value })} aria-current={active ? "page" : undefined} className={`shrink-0 rounded-full px-3 py-2 text-xs font-medium transition-[background-color,color] ${active ? "bg-primary text-primary-foreground" : "bg-surface text-muted-foreground hover:bg-muted"}`}>{label}</Link>;
+  return <Link href={queryHref(params, { scope: value === "all" ? undefined : value })} aria-current={active ? "page" : undefined} className={`inline-flex min-h-11 shrink-0 items-center rounded-full px-3 py-2 text-xs font-medium transition-[background-color,color] ${active ? "bg-primary text-primary-foreground" : "bg-surface text-muted-foreground hover:bg-muted"}`}>{label}</Link>;
 }
 
 function flattenFolders<T extends { id: string; parentId: string | null; name: string }>(folders: T[]) {

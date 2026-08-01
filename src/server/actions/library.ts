@@ -9,6 +9,7 @@ import {
   ensureUnsortedFolder,
   folderAccessWhere,
   moveWouldCreateCycle,
+  reorderSiblingFolderIds,
   TRASH_RETENTION_DAYS
 } from "@/server/documents/folders";
 import { documentAccessWhere, householdIdsForUser } from "@/server/documents/access";
@@ -39,6 +40,7 @@ async function userContext() {
 }
 
 function revalidateLibrary(documentId?: string) {
+  revalidatePath("/folders");
   revalidatePath("/documents");
   if (documentId) revalidatePath(`/documents/${documentId}`);
 }
@@ -81,6 +83,19 @@ export async function createFolderAction(formData: FormData) {
   });
   if (duplicate) throw new Error("In diesem Bereich gibt es bereits einen Ordner mit diesem Namen.");
 
+  const lastSibling = await prisma.folder.findFirst({
+    where: {
+      parentId: parsed.parentId ?? null,
+      deletedAt: null,
+      visibility: parsed.visibility,
+      ...(parsed.visibility === "private"
+        ? { createdByUserId: user.id }
+        : { householdId: parent?.householdId ?? householdId })
+    },
+    orderBy: { position: "desc" },
+    select: { position: true }
+  });
+
   await prisma.folder.create({
     data: {
       name: parsed.name,
@@ -88,7 +103,8 @@ export async function createFolderAction(formData: FormData) {
       visibility: parsed.visibility,
       createdByUserId: user.id,
       householdId: parent?.householdId ?? householdId,
-      parentId: parsed.parentId
+      parentId: parsed.parentId,
+      position: (lastSibling?.position ?? -1) + 1
     }
   });
   revalidateLibrary();
@@ -128,24 +144,25 @@ export async function renameFolderAction(formData: FormData) {
   revalidateLibrary();
 }
 
-export async function moveFolderAction(formData: FormData) {
-  const { user, householdIds } = await userContext();
-  const parsed = z.object({ folderId: idSchema, targetFolderId: optionalIdSchema }).parse({
-    folderId: formData.get("folderId"),
-    targetFolderId: formData.get("targetFolderId")
-  });
+async function repositionFolder(
+  context: Awaited<ReturnType<typeof userContext>>,
+  folderId: string,
+  targetParentId?: string,
+  beforeFolderId?: string
+) {
+  const { user, householdIds } = context;
   const folder = await prisma.folder.findFirst({
-    where: { id: parsed.folderId, ...folderAccessWhere(user.id, householdIds, user.role === "admin") }
+    where: { id: folderId, ...folderAccessWhere(user.id, householdIds, user.role === "admin") }
   });
   if (!folder) throw new Error("Ordner nicht gefunden.");
   if (folder.isSystem) throw new Error("Der Systemordner „Unsortiert“ kann nicht verschoben werden.");
 
-  const target = parsed.targetFolderId
+  const target = targetParentId
     ? await prisma.folder.findFirst({
-        where: { id: parsed.targetFolderId, ...folderAccessWhere(user.id, householdIds, user.role === "admin") }
+        where: { id: targetParentId, ...folderAccessWhere(user.id, householdIds, user.role === "admin") }
       })
     : null;
-  if (parsed.targetFolderId && !target) throw new Error("Zielordner nicht gefunden.");
+  if (targetParentId && !target) throw new Error("Zielordner nicht gefunden.");
   if (target && (target.visibility !== folder.visibility || target.householdId !== folder.householdId)) {
     throw new Error("Ordner können nicht zwischen privaten und gemeinsamen Bereichen verschoben werden.");
   }
@@ -158,8 +175,75 @@ export async function moveFolderAction(formData: FormData) {
     throw new Error("Ein Ordner kann nicht in sich selbst oder einen Unterordner verschoben werden.");
   }
 
-  await prisma.folder.update({ where: { id: folder.id }, data: { parentId: target?.id ?? null } });
+  const siblingWhere = (parentId: string | null) => ({
+    parentId,
+    deletedAt: null,
+    isSystem: false,
+    visibility: folder.visibility,
+    ...(folder.visibility === "private"
+      ? { createdByUserId: folder.createdByUserId }
+      : { householdId: folder.householdId })
+  });
+  const targetParentIdValue = target?.id ?? null;
+  const [sourceSiblings, targetSiblings] = await Promise.all([
+    prisma.folder.findMany({
+      where: siblingWhere(folder.parentId),
+      orderBy: [{ position: "asc" }, { name: "asc" }],
+      select: { id: true }
+    }),
+    folder.parentId === targetParentIdValue
+      ? Promise.resolve([])
+      : prisma.folder.findMany({
+          where: siblingWhere(targetParentIdValue),
+          orderBy: [{ position: "asc" }, { name: "asc" }],
+          select: { id: true }
+        })
+  ]);
+  const destination = folder.parentId === targetParentIdValue ? sourceSiblings : targetSiblings;
+  if (beforeFolderId && beforeFolderId !== folder.id && !destination.some(({ id }) => id === beforeFolderId)) {
+    throw new Error("Die gewählte Einfügeposition ist nicht verfügbar.");
+  }
+  const destinationIds = reorderSiblingFolderIds(
+    destination.map(({ id }) => id),
+    folder.id,
+    beforeFolderId === folder.id ? undefined : beforeFolderId
+  );
+  const sourceIds = folder.parentId === targetParentIdValue
+    ? []
+    : sourceSiblings.map(({ id }) => id).filter((id) => id !== folder.id);
+
+  await prisma.$transaction([
+    prisma.folder.update({
+      where: { id: folder.id },
+      data: { parentId: targetParentIdValue }
+    }),
+    ...sourceIds.map((id, position) => prisma.folder.update({ where: { id }, data: { position } })),
+    ...destinationIds.map((id, position) => prisma.folder.update({ where: { id }, data: { position } }))
+  ]);
   revalidateLibrary();
+}
+
+export async function moveFolderAction(formData: FormData) {
+  const context = await userContext();
+  const parsed = z.object({ folderId: idSchema, targetFolderId: optionalIdSchema }).parse({
+    folderId: formData.get("folderId"),
+    targetFolderId: formData.get("targetFolderId")
+  });
+  await repositionFolder(context, parsed.folderId, parsed.targetFolderId);
+}
+
+export async function reorderFolderAction(formData: FormData) {
+  const context = await userContext();
+  const parsed = z.object({
+    folderId: idSchema,
+    targetParentId: optionalIdSchema,
+    beforeFolderId: optionalIdSchema
+  }).parse({
+    folderId: formData.get("folderId"),
+    targetParentId: formData.get("targetParentId"),
+    beforeFolderId: formData.get("beforeFolderId")
+  });
+  await repositionFolder(context, parsed.folderId, parsed.targetParentId, parsed.beforeFolderId);
 }
 
 export async function trashFolderAction(formData: FormData) {

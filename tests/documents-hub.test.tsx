@@ -59,7 +59,7 @@ vi.mock("@/server/actions/library", () => ({
 }));
 
 describe("documents hub", () => {
-  it("combines search, personal scope, family scope and upload visibility", async () => {
+  it("focuses on search, document scopes and uploads", async () => {
     const { default: DocumentsPage } = await import("@/app/(app)/documents/page");
 
     const html = renderToStaticMarkup(
@@ -70,11 +70,25 @@ describe("documents hub", () => {
     expect(html).toContain("Meine Dokumente");
     expect(html).toContain("Familie");
     expect(html).toContain('name="visibility"');
-    expect(html).toContain("Neuer Ordner");
-    expect(html).toContain("Tags verwalten");
+    expect(html).toContain('href="/folders"');
+    expect(html).not.toContain("Neuer Ordner");
+    expect(html).not.toContain("Tags verwalten");
     expect(html).toContain("Papierkorb");
     expect(html).toContain('name="folderId"');
     expect(html).not.toContain("Deep Search");
     expect(html).not.toContain("KI-Tags");
+  });
+
+  it("replaces the normal workspace with search results", async () => {
+    const { default: DocumentsPage } = await import("@/app/(app)/documents/page");
+    const html = renderToStaticMarkup(
+      await DocumentsPage({ searchParams: Promise.resolve({ q: "ÖKK" }) })
+    );
+
+    expect(html).toContain("Suchergebnisse für „ÖKK“");
+    expect(html).toContain("Suche zurücksetzen");
+    expect(html).not.toContain("Filtern und sortieren");
+    expect(html).not.toContain("Dateien hinzufügen");
+    expect(html).not.toContain("Ordner wechseln");
   });
 });

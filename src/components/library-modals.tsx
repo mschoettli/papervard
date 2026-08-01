@@ -49,7 +49,7 @@ function DialogShell({
           <h2 id={titleId} className="font-display text-xl font-semibold">{title}</h2>
           {description ? <p id={descriptionId} className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
         </div>
-        <button type="button" onClick={() => dialogRef.current?.close()} aria-label="Dialog schließen" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground">
+        <button type="button" onClick={() => dialogRef.current?.close()} aria-label="Dialog schließen" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground">
           <X aria-hidden="true" size={19} />
         </button>
       </div>
@@ -176,7 +176,7 @@ export function TagManagerModal({
                   <input type="hidden" name="tagId" value={tag.id} />
                   <input aria-label={`Farbe für ${tag.name}`} name="color" type="color" defaultValue={tag.color} className="h-10 w-11 rounded-lg border border-border bg-surface p-1" />
                   <input aria-label={`${tag.name} umbenennen`} name="name" defaultValue={tag.name} required maxLength={60} className="h-10 min-w-0 rounded-lg border border-border bg-surface px-3 text-sm" />
-                  <button className="min-h-10 rounded-lg bg-surface px-3 text-xs font-medium shadow-sm hover:bg-muted">Speichern</button>
+                  <button className="min-h-11 rounded-lg bg-surface px-3 text-xs font-medium shadow-sm hover:bg-muted">Speichern</button>
                 </form>
                 {tags.length > 1 ? (
                   <form action={mergeAction} onSubmit={() => dialogRef.current?.close()} className="flex flex-col gap-2 sm:flex-row">
@@ -184,7 +184,7 @@ export function TagManagerModal({
                     <select aria-label={`${tag.name} zusammenführen mit`} name="targetTagId" className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-surface px-2 text-xs">
                       {tags.filter((item) => item.id !== tag.id).map((item) => <option key={item.id} value={item.id}>Mit „{item.name}“ zusammenführen</option>)}
                     </select>
-                    <button className="min-h-10 rounded-lg bg-surface px-3 text-xs font-medium shadow-sm hover:bg-muted">Zusammenführen</button>
+                    <button className="min-h-11 rounded-lg bg-surface px-3 text-xs font-medium shadow-sm hover:bg-muted">Zusammenführen</button>
                   </form>
                 ) : null}
                 <form action={deleteAction} onSubmit={() => dialogRef.current?.close()}>
@@ -222,7 +222,7 @@ export function TagSelectionModal({
   const idField = subjectType === "document" ? "documentId" : "folderId";
   return (
     <>
-      <button type="button" onClick={() => dialogRef.current?.showModal()} className={`inline-flex items-center justify-center gap-2 rounded-lg font-medium hover:bg-muted ${compact ? "min-h-10 px-3 text-xs" : "min-h-11 px-4 text-sm"}`} aria-haspopup="dialog">
+      <button type="button" onClick={() => dialogRef.current?.showModal()} className={`inline-flex items-center justify-center gap-2 rounded-lg font-medium hover:bg-muted ${compact ? "min-h-11 px-3 text-xs" : "min-h-11 px-4 text-sm"}`} aria-haspopup="dialog">
         <Tags aria-hidden="true" size={16} /> Tags auswählen
       </button>
       <DialogShell dialogRef={dialogRef} title="Tags auswählen" description={`Auswahl für „${subjectName}“. Neue Tags legst du in der Tag-Sammlung an.`}>
@@ -256,23 +256,26 @@ export function FolderActionsMenu({
   folders,
   renameAction,
   moveAction,
-  trashAction
+  trashAction,
+  orderControls
 }: {
   folder: FolderOption & { icon: string };
   folders: FolderOption[];
   renameAction: ServerFormAction;
   moveAction: ServerFormAction;
   trashAction: ServerFormAction;
+  orderControls?: ReactNode;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   return (
     <>
       <details className="relative">
-        <summary aria-label={`${folder.name} verwalten`} className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground [&::-webkit-details-marker]:hidden">
+        <summary aria-label={`${folder.name} verwalten`} className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground [&::-webkit-details-marker]:hidden">
           <MoreHorizontal aria-hidden="true" size={19} />
         </summary>
         <div className="absolute right-0 z-20 mt-1 w-52 rounded-xl border border-border bg-surface p-1.5 shadow-xl">
-          <button type="button" onClick={() => dialogRef.current?.showModal()} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm hover:bg-muted">
+          {orderControls ? <div className="border-b border-border pb-1.5">{orderControls}</div> : null}
+          <button type="button" onClick={() => dialogRef.current?.showModal()} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm hover:bg-muted">
             <FolderGlyph icon={folder.icon} size={16} /> Ordner bearbeiten
           </button>
           <form action={trashAction}>

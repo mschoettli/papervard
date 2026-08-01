@@ -211,6 +211,7 @@ model Folder {
   createdByUserId     String
   householdId         String
   parentId            String?
+  position            Int                @default(0)
   deletedAt           DateTime?
   deletedFromParentId String?
   createdAt           DateTime           @default(now())
@@ -224,7 +225,7 @@ model Folder {
   uploadSessions      UploadSession[]
   smbEntry            SmbSyncEntry?
 
-  @@index([parentId, deletedAt])
+  @@index([parentId, position, deletedAt])
   @@index([createdByUserId, visibility, deletedAt])
   @@index([householdId, visibility, deletedAt])
 }

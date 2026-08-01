@@ -30,4 +30,15 @@ describe("folder hierarchy", () => {
     const deletedAt = new Date("2026-07-14T10:00:00.000Z");
     expect(trashExpiresAt(deletedAt).toISOString()).toBe("2026-08-13T10:00:00.000Z");
   });
+
+  it("places a folder before a sibling or at the end without duplicates", async () => {
+    const foldersModule = await import("@/server/documents/folders");
+    const reorder = (foldersModule as typeof foldersModule & {
+      reorderSiblingFolderIds?: (ids: string[], folderId: string, beforeFolderId?: string) => string[];
+    }).reorderSiblingFolderIds;
+
+    expect(reorder).toBeTypeOf("function");
+    expect(reorder?.(["a", "b", "c"], "c", "b")).toEqual(["a", "c", "b"]);
+    expect(reorder?.(["a", "b", "c"], "a")).toEqual(["b", "c", "a"]);
+  });
 });
