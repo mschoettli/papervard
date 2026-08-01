@@ -18,6 +18,7 @@ import {
   Users
 } from "lucide-react";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
+import { DocumentBulkWorkspace, DocumentSelectionCheckbox } from "@/components/document-bulk-workspace";
 import { DocumentThumbnail } from "@/components/document-thumbnail";
 import { TagSelectionModal } from "@/components/library-modals";
 import { ResumableUpload } from "@/components/resumable-upload";
@@ -195,6 +196,36 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
   const total = textQuery ? searchResult.total : listResult.total;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const breadcrumbs = currentFolder ? buildBreadcrumbs(folders, currentFolder.id) : [];
+  const searchDocumentVisibility = textQuery
+    ? await prisma.document.findMany({
+        where: { id: { in: searchResult.results.map((result) => result.documentId) } },
+        select: { id: true, visibility: true }
+      })
+    : [];
+  const visibilityById = new Map(searchDocumentVisibility.map((document) => [document.id, document.visibility]));
+  const visibleDocuments = textQuery
+    ? searchResult.results.map((result) => ({ id: result.documentId, visibility: visibilityById.get(result.documentId) ?? "private" as const }))
+    : listResult.documents.map((document) => ({ id: document.id, visibility: document.visibility }));
+  const documentResults = (
+    <DocumentBulkWorkspace
+      selectionContextKey={JSON.stringify({ query: textQuery, folder: currentFolder?.id, scope, year: activeYear, tags: selectedTagIds, page })}
+      visibleDocuments={visibleDocuments}
+      total={total}
+      querySelection={{
+        mode: "query",
+        ...(textQuery ? { query: textQuery } : {}),
+        ...(currentFolder ? { folderId: currentFolder.id } : {}),
+        scope,
+        ...(activeYear ? { year: activeYear } : {}),
+        tagIds: selectedTagIds,
+        excludeIds: []
+      }}
+      folders={folders.map((folder) => ({ id: folder.id, name: folder.name, visibility: folder.visibility }))}
+      tags={tags.map((tag) => ({ id: tag.id, name: tag.name, color: tag.color }))}
+    >
+      <DocumentResults total={total} query={query} textQuery={textQuery} searchResults={searchResult.results} documents={listResult.documents} folders={folders} tags={tags} currentFolderId={currentFolder?.id} />
+    </DocumentBulkWorkspace>
+  );
 
   return (
     <div className="mx-auto max-w-screen-2xl space-y-5">
@@ -228,7 +259,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
                 </div>
                 <Link href="/documents" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-4 text-sm font-medium hover:bg-muted">Suche zurücksetzen</Link>
               </div>
-              <DocumentResults total={total} query={query} textQuery={textQuery} searchResults={searchResult.results} documents={listResult.documents} folders={folders} tags={tags} currentFolderId={currentFolder?.id} />
+              {documentResults}
               <Pagination page={page} totalPages={totalPages} params={params} />
             </section>
           ) : (
@@ -262,7 +293,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
                 <p><span className="tabular-nums font-medium text-foreground">{total}</span> {total === 1 ? "Dokument" : "Dokumente"}</p>
                 {activeYear ? <p>Jahr: {activeYear}</p> : null}
               </div>
-              <DocumentResults total={total} query={query} textQuery={textQuery} searchResults={searchResult.results} documents={listResult.documents} folders={folders} tags={tags} currentFolderId={currentFolder?.id} />
+              {documentResults}
               <Pagination page={page} totalPages={totalPages} params={params} />
             </div>
           )}
@@ -387,7 +418,8 @@ function DocumentResults({ total, query, textQuery, searchResults, documents, fo
     return (
       <div className="space-y-3">
         {searchResults.map((result) => (
-          <article key={result.chunkId} className="rounded-2xl bg-surface p-4 shadow-[0_1px_0_rgba(20,40,35,0.06),0_10px_28px_rgba(20,40,35,0.05)]">
+          <article key={result.chunkId} className="group relative rounded-2xl bg-surface p-4 pl-16 shadow-[0_1px_0_rgba(20,40,35,0.06),0_10px_28px_rgba(20,40,35,0.05)] transition-[background-color,box-shadow] has-[input:checked]:bg-primary/5 has-[input:checked]:ring-2 has-[input:checked]:ring-primary">
+            <DocumentSelectionCheckbox documentId={result.documentId} title={result.title} />
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <Link href={`/documents/${result.documentId}?page=${result.page}&q=${encodeURIComponent(textQuery)}`} className="font-semibold hover:underline">{result.title}</Link>
@@ -404,7 +436,8 @@ function DocumentResults({ total, query, textQuery, searchResults, documents, fo
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
       {documents.map((document) => (
-        <article key={document.id} className="group flex h-full min-h-[390px] flex-col rounded-2xl bg-surface p-4 shadow-[0_1px_0_rgba(20,40,35,0.06),0_12px_32px_rgba(20,40,35,0.07)] transition-[box-shadow,transform] hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(20,40,35,0.12)]">
+        <article key={document.id} className="group relative flex h-full min-h-[390px] flex-col rounded-2xl bg-surface p-4 shadow-[0_1px_0_rgba(20,40,35,0.06),0_12px_32px_rgba(20,40,35,0.07)] transition-[background-color,box-shadow,transform] hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(20,40,35,0.12)] has-[input:checked]:bg-primary/5 has-[input:checked]:ring-2 has-[input:checked]:ring-primary motion-reduce:hover:translate-y-0">
+            <DocumentSelectionCheckbox documentId={document.id} title={document.title} />
             <Link href={`/documents/${document.id}`} className="block rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
               <DocumentThumbnail documentId={document.id} title={document.title} />
             </Link>

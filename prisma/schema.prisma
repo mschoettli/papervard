@@ -79,6 +79,23 @@ enum ProcessingJobType {
   convert
   import_collection
   sync_smb
+  document_export
+}
+
+enum DocumentExportStatus {
+  queued
+  processing
+  completed
+  completed_with_warnings
+  failed
+  canceled
+  expired
+}
+
+enum DocumentExportItemStatus {
+  queued
+  completed
+  skipped
 }
 
 enum AnnotationKind {
@@ -126,6 +143,7 @@ model User {
   assignedFolderTags      FolderTag[]        @relation("FolderTagAssigner")
   assignedCollectionTags  CollectionTag[]    @relation("CollectionTagAssigner")
   assignedDicomSeriesTags DicomSeriesTag[]   @relation("DicomSeriesTagAssigner")
+  documentExports         DocumentExport[]
 }
 
 model Household {
@@ -192,6 +210,7 @@ model Document {
   contentChanges      ContentChange[]
   dicomStudy          DicomStudy?
   smbEntry            SmbSyncEntry?
+  exportItems         DocumentExportItem[]
 
   @@index([ownerUserId, checksum])
   @@index([ownerUserId])
@@ -308,6 +327,7 @@ model DocumentVersion {
   processingJobs  ProcessingJob[]
   annotations     Annotation[]
   contentChanges  ContentChange[]
+  exportItems     DocumentExportItem[]
 
   @@unique([documentId, versionNumber])
   @@index([blobId])
@@ -352,6 +372,7 @@ model ProcessingJob {
   documentId      String?
   versionId       String?
   uploadSessionId String?
+  exportId        String?             @unique
   progress        Int                 @default(0)
   stage           String              @default("queued")
   attempts        Int                 @default(0)
@@ -366,11 +387,56 @@ model ProcessingJob {
   document        Document?           @relation(fields: [documentId], references: [id], onDelete: Cascade)
   version         DocumentVersion?    @relation(fields: [versionId], references: [id], onDelete: Cascade)
   uploadSession   UploadSession?      @relation(fields: [uploadSessionId], references: [id], onDelete: Cascade)
+  export          DocumentExport?     @relation(fields: [exportId], references: [id], onDelete: Cascade)
 
   @@index([status, availableAt])
   @@index([documentId])
   @@index([versionId])
   @@index([uploadSessionId])
+}
+
+model DocumentExport {
+  id             String               @id @default(cuid())
+  ownerUserId    String
+  status         DocumentExportStatus @default(queued)
+  progress       Int                  @default(0)
+  totalItems     Int                  @default(0)
+  completedItems Int                  @default(0)
+  skippedItems   Int                  @default(0)
+  outputPath     String?              @unique
+  outputSize     BigInt?
+  error          String?
+  warnings       Json?
+  expiresAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  owner          User                 @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  items          DocumentExportItem[]
+  processingJob  ProcessingJob?
+
+  @@index([ownerUserId, createdAt])
+  @@index([status, expiresAt])
+}
+
+model DocumentExportItem {
+  id            String                   @id @default(cuid())
+  exportId      String
+  documentId    String?
+  versionId     String?
+  sourcePath    String
+  relativePath  String
+  size          BigInt
+  status        DocumentExportItemStatus @default(queued)
+  error         String?
+  createdAt     DateTime                 @default(now())
+  export        DocumentExport           @relation(fields: [exportId], references: [id], onDelete: Cascade)
+  document      Document?                @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  version       DocumentVersion?         @relation(fields: [versionId], references: [id], onDelete: SetNull)
+
+  @@index([exportId, status])
+  @@index([documentId])
+  @@index([versionId])
 }
 
 model Collection {

@@ -258,7 +258,7 @@ export function UploadStatusDock() {
   const overallProgress = Math.round(items.reduce((sum, item) => sum + item.progress, 0) / items.length);
 
   return (
-    <details className="fixed bottom-4 right-4 z-40 w-[min(92vw,380px)] overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl" open={active > 0}>
+    <details className="w-[min(92vw,380px)] overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl" open={active > 0}>
       <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-4 [&::-webkit-details-marker]:hidden">
         {active > 0 ? <LoaderCircle aria-hidden="true" size={19} className="animate-spin text-primary motion-reduce:animate-none" /> : <CircleCheck aria-hidden="true" size={19} className="text-primary" />}
         <span className="min-w-0 flex-1">

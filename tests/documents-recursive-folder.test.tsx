@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.stubGlobal("React", React);
 
+vi.mock("next/navigation", () => ({ redirect: vi.fn(), useRouter: () => ({ refresh: vi.fn() }) }));
+
 const documentFindMany = vi.fn(async (args?: unknown) => {
   const options = args as { distinct?: string[] } | undefined;
   return options?.distinct ? [] : [];

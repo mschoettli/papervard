@@ -13,7 +13,8 @@ export function storageLayout() {
     previews: path.join(root, "previews"),
     thumbnails: path.join(root, "thumbnails"),
     staging: path.join(root, "staging"),
-    library: path.join(root, "library")
+    library: path.join(root, "library"),
+    exports: path.join(root, "exports")
   };
 }
 

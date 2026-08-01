@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.stubGlobal("React", React);
 
+vi.mock("next/navigation", () => ({ redirect: vi.fn(), useRouter: () => ({ refresh: vi.fn() }) }));
+
 vi.mock("@/server/auth", () => ({
   requireUser: vi.fn(async () => ({ id: "user-1", name: "Mara", role: "user" }))
 }));

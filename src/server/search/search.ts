@@ -37,7 +37,7 @@ export async function hybridSearch(userId: string, query: string, filters: Searc
   const year = filters.year && Number.isInteger(filters.year) ? filters.year : null;
   const scope = filters.scope ?? "all";
   const documentId = filters.documentId ?? null;
-  const limit = Math.min(Math.max(filters.limit ?? 24, 1), 50);
+  const limit = Math.min(Math.max(filters.limit ?? 24, 1), 500);
   const offset = Math.max(filters.offset ?? 0, 0);
   const folderIds = [...new Set(filters.folderIds ?? [])];
   const tagIds = [...new Set(filters.tagIds ?? [])];
