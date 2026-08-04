@@ -7,7 +7,7 @@ export function DocumentThumbnail({ documentId, title }: { documentId: string; t
   const [failed, setFailed] = useState(false);
 
   return (
-    <div className="flex aspect-[3/4] w-full items-center justify-center overflow-hidden rounded-md border border-border bg-muted/40">
+    <div className="flex aspect-[5/6] w-full items-center justify-center overflow-hidden rounded-lg bg-muted/40 outline outline-1 -outline-offset-1 outline-black/10">
       {failed ? (
         <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground">
           <FileText size={36} />

@@ -434,15 +434,15 @@ function DocumentResults({ total, query, textQuery, searchResults, documents, fo
     );
   }
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,15rem),1fr))] gap-3">
       {documents.map((document) => (
-        <article key={document.id} className="group relative flex h-full min-h-[390px] flex-col rounded-2xl bg-surface p-4 shadow-[0_1px_0_rgba(20,40,35,0.06),0_12px_32px_rgba(20,40,35,0.07)] transition-[background-color,box-shadow,transform] hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(20,40,35,0.12)] has-[input:checked]:bg-primary/5 has-[input:checked]:ring-2 has-[input:checked]:ring-primary motion-reduce:hover:translate-y-0">
+        <article key={document.id} className="group relative flex h-full flex-col rounded-2xl bg-surface p-3 shadow-[0_1px_0_rgba(20,40,35,0.06),0_8px_24px_rgba(20,40,35,0.06)] transition-[background-color,box-shadow,transform] hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(20,40,35,0.11)] has-[input:checked]:bg-primary/5 has-[input:checked]:ring-2 has-[input:checked]:ring-primary motion-reduce:hover:translate-y-0">
             <DocumentSelectionCheckbox documentId={document.id} title={document.title} />
             <Link href={`/documents/${document.id}`} className="block rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
               <DocumentThumbnail documentId={document.id} title={document.title} />
             </Link>
-            <div className="mt-4 min-w-0">
-              <div className="flex flex-wrap items-center gap-2 text-xs">
+            <div className="mt-3 min-w-0">
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
                 <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 font-medium">
                   {document.visibility === "private" ? <Lock size={12} /> : <Users size={12} />}{document.visibility === "private" ? "Nur ich" : "Familie"}
                 </span>
@@ -451,12 +451,12 @@ function DocumentResults({ total, query, textQuery, searchResults, documents, fo
               <h2 className="mt-2 line-clamp-2 break-words text-sm font-semibold leading-5">{document.title}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{document.year} · {formatBytes(document.size)}</p>
               {document.tags.length > 0 ? (
-                <div className="mt-3 flex flex-wrap gap-1.5">
+                <div className="mt-2 flex flex-wrap gap-1">
                   {document.tags.map(({ tag }) => <TagChip key={tag.id} tag={tag} />)}
                 </div>
               ) : null}
             </div>
-            <details className="mt-3 border-t border-border/70 pt-2">
+            <details className="mt-2 border-t border-border/70 pt-1">
               <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden"><MoreHorizontal size={16} /> Ablegen und Tags</summary>
               <div className="grid gap-3 pt-2">
                 <form action={moveDocumentAction} className="flex gap-2">
@@ -479,7 +479,7 @@ function DocumentResults({ total, query, textQuery, searchResults, documents, fo
                 </form>
               </div>
             </details>
-            <div className="mt-auto grid grid-cols-3 gap-2 pt-4">
+            <div className="mt-auto grid grid-cols-3 gap-1.5 pt-3">
               <form action={toggleFavoriteDocumentAction}>
                 <input type="hidden" name="documentId" value={document.id} />
                 <button aria-label={document.favorites.length > 0 ? "Favorit entfernen" : "Als Favorit merken"} className="flex min-h-11 w-full items-center justify-center rounded-lg bg-muted">
