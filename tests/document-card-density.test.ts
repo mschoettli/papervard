@@ -23,4 +23,12 @@ describe("document card density", () => {
     expect(thumbnail).toContain("aspect-[5/6]");
     expect(thumbnail).toContain("object-contain");
   });
+
+  it("keeps folder paths and tags out of the default card summary", () => {
+    const page = source("src/app/(app)/documents/page.tsx");
+
+    expect(page).toContain("Mehr Details");
+    expect(page).toContain('<span className="shrink-0 tabular-nums text-muted-foreground">{document.year}</span>');
+    expect(page).toContain('<span className="font-medium text-foreground">Ordner:</span>');
+  });
 });

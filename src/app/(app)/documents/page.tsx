@@ -418,7 +418,7 @@ function DocumentResults({ total, query, textQuery, searchResults, documents, fo
     return (
       <div className="space-y-3">
         {searchResults.map((result) => (
-          <article key={result.chunkId} className="group relative rounded-2xl bg-surface p-4 pl-16 shadow-[0_1px_0_rgba(20,40,35,0.06),0_10px_28px_rgba(20,40,35,0.05)] transition-[background-color,box-shadow] has-[input:checked]:bg-primary/5 has-[input:checked]:ring-2 has-[input:checked]:ring-primary">
+          <article key={result.chunkId} className="group relative rounded-2xl border border-border/70 bg-surface p-4 pl-16 shadow-[0_1px_0_rgba(20,40,35,0.05),0_10px_24px_rgba(20,40,35,0.04)] transition-[border-color,box-shadow] has-[input:checked]:border-foreground/20 has-[input:checked]:shadow-[0_0_0_1px_rgba(34,38,42,0.08),0_14px_30px_rgba(20,40,35,0.08)]">
             <DocumentSelectionCheckbox documentId={result.documentId} title={result.title} />
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
@@ -436,29 +436,35 @@ function DocumentResults({ total, query, textQuery, searchResults, documents, fo
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,15rem),1fr))] gap-3">
       {documents.map((document) => (
-        <article key={document.id} className="group relative flex h-full flex-col rounded-2xl bg-surface p-3 shadow-[0_1px_0_rgba(20,40,35,0.06),0_8px_24px_rgba(20,40,35,0.06)] transition-[background-color,box-shadow,transform] hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(20,40,35,0.11)] has-[input:checked]:bg-primary/5 has-[input:checked]:ring-2 has-[input:checked]:ring-primary motion-reduce:hover:translate-y-0">
+        <article key={document.id} className="group relative flex h-full flex-col rounded-2xl border border-border/70 bg-surface p-3 shadow-[0_1px_0_rgba(20,40,35,0.05),0_8px_22px_rgba(20,40,35,0.04)] transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-border hover:shadow-[0_16px_36px_rgba(20,40,35,0.08)] has-[input:checked]:border-foreground/20 has-[input:checked]:shadow-[0_0_0_1px_rgba(34,38,42,0.08),0_18px_40px_rgba(20,40,35,0.08)] motion-reduce:hover:translate-y-0">
             <DocumentSelectionCheckbox documentId={document.id} title={document.title} />
             <Link href={`/documents/${document.id}`} className="block rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
               <DocumentThumbnail documentId={document.id} title={document.title} />
             </Link>
             <div className="mt-3 min-w-0">
-              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <div className="flex items-center justify-between gap-2 text-xs">
                 <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 font-medium">
                   {document.visibility === "private" ? <Lock size={12} /> : <Users size={12} />}{document.visibility === "private" ? "Nur ich" : "Familie"}
                 </span>
-                <span className="truncate text-muted-foreground">{relativeFolderPath(folders, currentFolderId, document.folderId)}</span>
+                <span className="shrink-0 tabular-nums text-muted-foreground">{document.year}</span>
               </div>
               <h2 className="mt-2 line-clamp-2 break-words text-sm font-semibold leading-5">{document.title}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{document.year} · {formatBytes(document.size)}</p>
-              {document.tags.length > 0 ? (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {document.tags.map(({ tag }) => <TagChip key={tag.id} tag={tag} />)}
-                </div>
-              ) : null}
+              <p className="mt-1 text-sm text-muted-foreground">{formatBytes(document.size)}</p>
             </div>
             <details className="mt-2 border-t border-border/70 pt-1">
-              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden"><MoreHorizontal size={16} /> Ablegen und Tags</summary>
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden"><MoreHorizontal size={16} /> Mehr Details</summary>
               <div className="grid gap-3 pt-2">
+                <div className="grid gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">Ordner:</span>{" "}
+                    <span className="break-words">{relativeFolderPath(folders, currentFolderId, document.folderId)}</span>
+                  </p>
+                  {document.tags.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {document.tags.map(({ tag }) => <TagChip key={tag.id} tag={tag} />)}
+                    </div>
+                  ) : null}
+                </div>
                 <form action={moveDocumentAction} className="flex gap-2">
                   <input type="hidden" name="documentId" value={document.id} />
                   <FolderSelect name="targetFolderId" folders={folders.filter((folder) => folder.visibility === document.visibility)} defaultValue={document.folderId} compact />
